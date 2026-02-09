@@ -1,81 +1,81 @@
 # LexiConnect
 
-Location-Based Lawyer Discovery & Appointment Platform
+Location-based lawyer discovery, KYC-verified onboarding, and case-centric booking workflows.
 
-LexiConnect is a full-stack web platform that helps users discover verified lawyers by location and specialization, book appointments, and manage legal case workflows digitally. It is built as a university group project with role-based access control, audit logging, and a document workflow suited for legal service delivery.
+LexiConnect is a university-built, full-stack platform that helps clients find lawyers, request case representation, and schedule verified appointments with controlled document handling and audit trails. It is a scheduling and case-management system, not a law firm and not a source of legal advice. Its system design centers on case-based workflows with RBAC and auditability as first-class concerns.
 
-## Key Features
+## Table Of Contents
+- Why It Matters
+- Features By Role
+- Workflow Highlights
+- Security Model
+- Tech Stack
+- Architecture
+- Screenshots
+- Run Locally
+- Environment Variables
+- Academic Report
+- Credits And Attribution
+- Project Status
 
+## Why It Matters
+Legal service workflows are often fragmented across calls, emails, and untracked documents. LexiConnect centralizes discovery, case intake, approvals, booking, and document access so that each step is traceable, role-aware, and auditable.
+
+## Features By Role
 Client
-- Register and sign in with JWT-based authentication
-- Search lawyers by district, city, specialization, and languages
-- View verified lawyer profiles
-- Book appointments and manage booking status
-- Submit case intake forms and upload case documents
-- Track disputes and case updates
-- View notifications and activity updates
-- Access public case feed and case comments (where enabled)
+- Lawyer discovery by district, city, specialization, and language
+- Case intake and case list tracking
+- Booking requests and status updates
+- Document uploads tied to cases and bookings
+- Notifications and activity updates
 
 Lawyer
-- Manage public profile, services, and specializations
-- Configure availability, exceptions, and blackout periods
-- Confirm or reject booking requests
-- Manage token queue for same-day consultations
-- Submit KYC for verification
-- Review client intake and case documents
-- Browse case feed, request cases, and manage assigned cases
-- Apprenticeship workflow and notes (optional module)
+- Public profile and specialization management
+- Availability scheduling with exceptions and blackout days
+- Booking confirmation and rejection
+- Token queue management for same-day consultations
+- KYC submission for verification
+- Case feed browsing and case request workflow
+- Case documents access and review links
 
 Clerk
-- View bookings
-- Manage token queue entries
-- View documents (per RBAC policy)
+- Booking visibility based on RBAC privileges
+- Controlled document access per policy
 
 Admin
-- Admin dashboard with metrics and reports
-- Approve KYC submissions
-- Manage disputes
-- Audit log and auth log review
-- Access control for roles and privileges (RBAC)
-- Notifications history
+- KYC approval and rejection
+- Audit log and authentication log review
+- Dispute tracking and reporting
+- RBAC module and privilege management
+- Administrative metrics and dashboards
 
-## Security And Compliance
+## Workflow Highlights
+- Case to booking: client opens a case, lawyers request the case, client approves a lawyer, then a booking is created for that case.
+- KYC verification: lawyers submit KYC and admins approve or reject before a lawyer is considered verified.
+- Document handling: documents are uploaded against a case or booking with role-checked access and review links to support manual approval or feedback.
+- Conflict prevention: booking creation includes slot validation and overlap checks to avoid double-booking.
+- Audit trail: sensitive actions write audit events and authentication logs for traceability.
 
+## Security Model
 - JWT access and refresh tokens for API authentication
-- Password hashing with bcrypt via Passlib
-- Role-based access control (RBAC) with module privileges
-- Audit log and authentication log trails for sensitive actions
-- Controlled document access and server-side checks
-- Password reset flow with one-time tokens
+- Role-based access control (RBAC) with module-level privileges
+- Audit logs and auth logs for security-sensitive actions
+- Server-side document access checks for case- and booking-linked files
 
 ## Tech Stack
 
-Frontend
-- React + Vite
-- Tailwind CSS
-- React Router
-- Axios
-- Chart.js and Recharts
-
-Backend
-- FastAPI
-- SQLAlchemy
-- Alembic
-- PostgreSQL
-- python-jose (JWT)
-- Passlib + bcrypt
-
-Infrastructure And Tooling
-- Docker Compose (PostgreSQL, Mailpit)
-- Mailpit for local SMTP testing
+| Layer | Technology |
+| --- | --- |
+| Frontend | React, Vite, Tailwind CSS, React Router, Axios |
+| Backend | FastAPI, SQLAlchemy, Alembic, Python-Jose (JWT), Passlib + bcrypt |
+| Database | PostgreSQL |
+| Dev Services | Docker Compose (PostgreSQL, Mailpit) |
 
 ## Architecture
-
-High-level data flow
-- React (Vite) SPA calls FastAPI REST endpoints
-- FastAPI serves data from PostgreSQL via SQLAlchemy
-- Documents are stored on the local filesystem under `backend/uploads` and served from `/uploads`
-- Mailpit captures outgoing password reset emails during local development
+- React (Vite) SPA communicates with FastAPI REST endpoints
+- FastAPI persists data in PostgreSQL via SQLAlchemy
+- File uploads are stored locally at `backend/uploads` and served from `/uploads`
+- Mailpit captures outbound email during local development
 
 Diagrams
 
@@ -84,44 +84,27 @@ Diagrams
 
 ## Screenshots
 
-Screenshots should be placed in `docs/screenshots/`.
-
 | # | Screen | File |
 | --- | --- | --- |
-| 01 | Landing page | [docs/screenshots/01-landing.png](docs/screenshots/01-landing.png) |
+| 01 | Landing | [docs/screenshots/01-landing.png](docs/screenshots/01-landing.png) |
 | 02 | Login | [docs/screenshots/02-login.png](docs/screenshots/02-login.png) |
-| 03 | Register | [docs/screenshots/03-register.png](docs/screenshots/03-register.png) |
-| 04 | Client dashboard | [docs/screenshots/04-client-dashboard.png](docs/screenshots/04-client-dashboard.png) |
-| 05 | Lawyer search | [docs/screenshots/05-lawyer-search.png](docs/screenshots/05-lawyer-search.png) |
-| 06 | Lawyer profile | [docs/screenshots/06-lawyer-profile.png](docs/screenshots/06-lawyer-profile.png) |
-| 07 | Booking form | [docs/screenshots/07-booking-form.png](docs/screenshots/07-booking-form.png) |
-| 08 | Client bookings | [docs/screenshots/08-client-bookings.png](docs/screenshots/08-client-bookings.png) |
-| 09 | Booking detail | [docs/screenshots/09-booking-detail.png](docs/screenshots/09-booking-detail.png) |
-| 10 | Case documents list | [docs/screenshots/10-case-documents.png](docs/screenshots/10-case-documents.png) |
-| 11 | Document upload | [docs/screenshots/11-document-upload.png](docs/screenshots/11-document-upload.png) |
-| 12 | Client cases list | [docs/screenshots/12-client-cases.png](docs/screenshots/12-client-cases.png) |
-| 13 | Client case detail | [docs/screenshots/13-client-case-detail.png](docs/screenshots/13-client-case-detail.png) |
-| 14 | Client dispute submission | [docs/screenshots/14-client-dispute.png](docs/screenshots/14-client-dispute.png) |
-| 15 | Lawyer dashboard | [docs/screenshots/15-lawyer-dashboard.png](docs/screenshots/15-lawyer-dashboard.png) |
-| 16 | Lawyer availability | [docs/screenshots/16-lawyer-availability.png](docs/screenshots/16-lawyer-availability.png) |
-| 17 | Lawyer token queue | [docs/screenshots/17-lawyer-token-queue.png](docs/screenshots/17-lawyer-token-queue.png) |
-| 18 | Lawyer KYC | [docs/screenshots/18-lawyer-kyc.png](docs/screenshots/18-lawyer-kyc.png) |
-| 19 | Lawyer case feed | [docs/screenshots/19-lawyer-case-feed.png](docs/screenshots/19-lawyer-case-feed.png) |
-| 20 | Lawyer case detail | [docs/screenshots/20-lawyer-case-detail.png](docs/screenshots/20-lawyer-case-detail.png) |
-| 21 | Admin dashboard | [docs/screenshots/21-admin-dashboard.png](docs/screenshots/21-admin-dashboard.png) |
-| 22 | Admin KYC approval | [docs/screenshots/22-admin-kyc-approval.png](docs/screenshots/22-admin-kyc-approval.png) |
-| 23 | Admin audit log | [docs/screenshots/23-admin-audit-log.png](docs/screenshots/23-admin-audit-log.png) |
-| 24 | Admin auth log | [docs/screenshots/24-admin-auth-log.png](docs/screenshots/24-admin-auth-log.png) |
-| 25 | Admin access control | [docs/screenshots/25-admin-access-control.png](docs/screenshots/25-admin-access-control.png) |
-| 26 | Admin disputes | [docs/screenshots/26-admin-disputes.png](docs/screenshots/26-admin-disputes.png) |
-| 27 | Notifications history | [docs/screenshots/27-notifications.png](docs/screenshots/27-notifications.png) |
-| 28 | Public case feed | [docs/screenshots/28-public-case-feed.png](docs/screenshots/28-public-case-feed.png) |
-| 29 | Public case detail | [docs/screenshots/29-public-case-detail.png](docs/screenshots/29-public-case-detail.png) |
-| 30 | Apprentice dashboard | [docs/screenshots/30-apprentice-dashboard.png](docs/screenshots/30-apprentice-dashboard.png) |
+| 03 | Lawyer search | [docs/screenshots/03-lawyer-search.png](docs/screenshots/03-lawyer-search.png) |
+| 04 | Lawyer profile | [docs/screenshots/04-lawyer-profile.png](docs/screenshots/04-lawyer-profile.png) |
+| 05 | Booking | [docs/screenshots/05-booking.png](docs/screenshots/05-booking.png) |
+| 06 | Document upload | [docs/screenshots/06-document-upload.png](docs/screenshots/06-document-upload.png) |
+| 07 | Client cases | [docs/screenshots/07-client-cases.png](docs/screenshots/07-client-cases.png) |
+| 08 | Lawyer dashboard | [docs/screenshots/08-lawyer-dashboard.png](docs/screenshots/08-lawyer-dashboard.png) |
+| 09 | Lawyer availability | [docs/screenshots/09-lawyer-availability.png](docs/screenshots/09-lawyer-availability.png) |
+| 10 | Lawyer KYC | [docs/screenshots/10-lawyer-kyc.png](docs/screenshots/10-lawyer-kyc.png) |
+| 11 | Lawyer case feed | [docs/screenshots/11-lawyer-case-feed.png](docs/screenshots/11-lawyer-case-feed.png) |
+| 12 | Admin dashboard | [docs/screenshots/12-admin-dashboard.png](docs/screenshots/12-admin-dashboard.png) |
+| 13 | Admin audit log | [docs/screenshots/13-admin-audit-log.png](docs/screenshots/13-admin-audit-log.png) |
+| 14 | RBAC denied | [docs/screenshots/14-rbac-denied.png](docs/screenshots/14-rbac-denied.png) |
 
-## How To Run Locally
+## Run Locally
+Docker Compose only starts dependencies (PostgreSQL and Mailpit). Run the backend and frontend manually.
 
-Docker Compose (Database and Mailpit)
+Dependencies
 
 PowerShell
 ```powershell
@@ -178,14 +161,19 @@ Local URLs
 - Mailpit: http://127.0.0.1:8025
 
 ## Environment Variables
-
-Backend `backend/.env.example`
+Backend: `backend/.env`
 ```env
+# Database Configuration
+# PostgreSQL connection string (for Docker Compose setup)
 DATABASE_URL=postgresql+psycopg2://lexiconnect:lexiconnect@127.0.0.1:5432/lexiconnect
 
+# JWT Configuration
 JWT_SECRET=change_me_to_a_secure_random_string
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60
+
+# Environment variables for seeding demo users
+# Copy this file to .env and adjust values as needed
 
 SEED_DEMO_USERS=true
 
@@ -200,57 +188,19 @@ CLIENT_PASSWORD=Client@123
 
 APPRENTICE_EMAIL=apprentice@lexiconnect.local
 APPRENTICE_PASSWORD=Apprentice@123
-
-SMTP_HOST=localhost
-SMTP_PORT=1025
-EMAIL_FROM=no-reply@lexiconnect.local
-FRONTEND_URL=http://localhost:5173
 ```
 
-Notes
-- `JWT_*` values exist in `backend/.env.example`, but the backend currently uses constants in `backend/app/routers/auth.py`. If you want env-based secrets, wire them there.
-- `SMTP_*` and `FRONTEND_URL` are used for password reset emails. Defaults match the Mailpit service in `docker-compose.yml`.
-
-Frontend `frontend/.env.example`
+Frontend: `frontend/.env`
 ```env
+# API Base URL for backend
+# Copy this file to .env and adjust values as needed
 VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
-## Database And Migrations
-
-- PostgreSQL is required. Set `DATABASE_URL` in `backend/.env`.
-- Alembic configuration lives in `backend/alembic.ini` and `backend/alembic/`.
-
-Run migrations
-
-PowerShell
-```powershell
-cd backend
-alembic upgrade head
-```
-
-Bash
-```bash
-cd backend
-alembic upgrade head
-```
-
-Optional seed data
-
-PowerShell
-```powershell
-cd backend
-python scripts/seed.py
-```
-
-Bash
-```bash
-cd backend
-python scripts/seed.py
-```
+## Academic Report
+[LexiConnect Final Project Report](LexiConnect_Final_Report.pdf)
 
 ## Credits And Attribution
-
 LexiConnect is a university group project.
 
 Team (Group 06)
@@ -262,8 +212,9 @@ Team (Group 06)
 
 Original university repository: <UNIVERSITY_REPO_URL>
 
-## Disclaimer
-
-This project is developed strictly for academic purposes and is not intended for commercial or legal deployment.
-
-Legal disclaimer: LexiConnect is a neutral legal appointment facilitation platform developed strictly for academic purposes. It does not advertise, promote, rank, or endorse any legal practitioner. All lawyer profiles are standardized, admin-verified, and displayed solely based on user-selected filters.
+## Project Status
+This project is actively maintained for academic purposes. Future improvements (not yet implemented) could include:
+- Full Docker Compose stack for backend and frontend
+- Object storage for uploads (S3 or MinIO)
+- CI pipeline and deployment automation
+- Production deployment hardening
