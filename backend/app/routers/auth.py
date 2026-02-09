@@ -1,0 +1,569 @@
+from datetime import datetime, timedelta, timezone
+import os
+import logging
+import smtplib
+from email.message import EmailMessage
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from pydantic import BaseModel, EmailStr
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models.user import User, UserRole
+from app.models.lawyer import Lawyer
+from app.modules.lawyer_profiles.models import LawyerProfile
+from app.schemas.auth import Token
+from app.schemas.user import UserCreate, UserOut
+from app.schemas.user_public import UserMeOut
+from app.modules.auth.services import create_password_reset_token, consume_password_reset_token
+from app.modules.auth.schemas import ChangePasswordRequest, GenericMessageResponse
+from app.modules.rbac.models import (
+    Module as ModuleModel,
+    Privilege as PrivilegeModel,
+    Role as RoleModel,
+    RolePrivilege as RolePrivilegeModel,
+    UserRole as UserRoleModel,
+)
+from app.modules.rbac.services import get_user_effective_privilege_keys
+from app.modules.auth_log.service import create_auth_log
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
+
+
+def _send_password_reset_email(recipient: str, reset_link: str) -> None:
+    host = os.getenv("SMTP_HOST", "localhost")
+    port = int(os.getenv("SMTP_PORT", "1025"))
+    sender = os.getenv("EMAIL_FROM", "no-reply@lexiconnect.local")
+
+    message = EmailMessage()
+    message["Subject"] = "Reset your LexiConnect password"
+    message["From"] = sender
+    message["To"] = recipient
+    message.set_content(
+        f"Use the link below to reset your password:\n\n{reset_link}\n"
+    )
+
+    try:
+        logger.info("SMTP connect host=%s port=%s", host, port)
+        with smtplib.SMTP(host, port) as smtp:
+            smtp.send_message(message)
+    except Exception:
+        logger.exception("Failed to send password reset email")
+
+# ✅ Move to env in production
+SECRET_KEY = "CHANGE_ME_SECRET_KEY"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+REFRESH_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", scheme_name="BearerAuth")
+
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def get_user_by_email(db: Session, email: str) -> Optional[User]:
+    return db.query(User).filter(User.email == email).first()
+
+
+def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
+    user = get_user_by_email(db, email)
+    if not user or not verify_password(password, user.hashed_password):
+        return None
+    return user
+
+
+def _create_token(data: dict, expires_delta: timedelta, token_type: str) -> str:
+    to_encode = data.copy()
+    expire = datetime.utcnow() + expires_delta
+    to_encode.update({"exp": expire, "type": token_type})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    expire = expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    return _create_token(data, expire, "access")
+
+
+def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    expire = expires_delta or timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
+    return _create_token(data, expire, "refresh")
+
+
+def _coerce_int(value) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _safe_log_auth(
+    db: Session,
+    *,
+    event_type: str,
+    success: bool,
+    email: Optional[str],
+    request: Optional[Request],
+    message: Optional[str] = None,
+    user_id=None,
+    method: Optional[str] = None,
+):
+    try:
+        create_auth_log(
+            db,
+            event_type=event_type,
+            success=success,
+            user_id=_coerce_int(user_id),
+            message=message,
+            request=request,
+            occurred_at=datetime.now(timezone.utc),
+        )
+    except Exception:
+        db.rollback()
+
+
+def _decode_token(token: str, expected_type: str) -> dict:
+    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    token_type = payload.get("type")
+    if token_type != expected_type:
+        raise JWTError(f"Invalid token type: expected {expected_type}, got {token_type}")
+    return payload
+
+
+def _get_user_from_payload(payload: dict, db: Session) -> User:
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise JWTError("Missing sub claim")
+
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    if user is None:
+        raise JWTError("User not found")
+    return user
+
+
+def _ensure_role(db: Session, role_name: str) -> RoleModel:
+    role = db.query(RoleModel).filter(RoleModel.name == role_name).first()
+    if role:
+        return role
+    role = RoleModel(name=role_name, description=f"{role_name.title()} role", is_system=True)
+    db.add(role)
+    db.commit()
+    db.refresh(role)
+    return role
+
+
+def _ensure_module(db: Session, key: str, name: str, description: str) -> ModuleModel:
+    module = db.query(ModuleModel).filter(ModuleModel.key == key).first()
+    if module:
+        return module
+    module = ModuleModel(key=key, name=name, description=description, sort_order=10)
+    db.add(module)
+    db.commit()
+    db.refresh(module)
+    return module
+
+
+def _ensure_privilege(
+    db: Session,
+    *,
+    key: str,
+    name: str,
+    description: str,
+    module_key: str,
+    module_name: str,
+    module_description: str,
+) -> PrivilegeModel:
+    privilege = db.query(PrivilegeModel).filter(PrivilegeModel.key == key).first()
+    if privilege:
+        return privilege
+    module = _ensure_module(db, module_key, module_name, module_description)
+    privilege = PrivilegeModel(
+        key=key,
+        name=name,
+        description=description,
+        module_id=module.id,
+    )
+    db.add(privilege)
+    db.commit()
+    db.refresh(privilege)
+    return privilege
+
+
+def _ensure_role_privilege(db: Session, role_id: int, privilege_id: int) -> None:
+    exists = (
+        db.query(RolePrivilegeModel)
+        .filter(
+            RolePrivilegeModel.role_id == role_id,
+            RolePrivilegeModel.privilege_id == privilege_id,
+        )
+        .first()
+    )
+    if exists:
+        return
+    db.add(RolePrivilegeModel(role_id=role_id, privilege_id=privilege_id))
+    db.commit()
+
+
+def _ensure_user_role(db: Session, user_id: int, role_id: int) -> None:
+    exists = (
+        db.query(UserRoleModel)
+        .filter(UserRoleModel.user_id == user_id, UserRoleModel.role_id == role_id)
+        .first()
+    )
+    if exists:
+        return
+    db.add(UserRoleModel(user_id=user_id, role_id=role_id))
+    db.commit()
+
+
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> User:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = _decode_token(token, "access")
+        user = _get_user_from_payload(payload, db)
+    except JWTError:
+        raise credentials_exception
+    return user
+
+
+@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+def register(user_in: UserCreate, db: Session = Depends(get_db)):
+    existing = get_user_by_email(db, user_in.email)
+    if existing:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+
+    if user_in.role == UserRole.apprentice:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Apprentice registration is not allowed")
+
+    hashed_password = get_password_hash(user_in.password)
+
+    user = User(
+        full_name=user_in.full_name,
+        email=user_in.email,
+        phone=user_in.phone,
+        hashed_password=hashed_password,
+        role=user_in.role or UserRole.client,
+    )
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    # Ensure RBAC role + user role link exists for new users
+    role_name = user.role.name.upper() if isinstance(user.role, UserRole) else str(user.role).upper()
+    role_model = _ensure_role(db, role_name)
+    _ensure_user_role(db, user.id, role_model.id)
+
+    # Ensure Client role can view bookings (booking.view privilege)
+    if role_name == "CLIENT":
+        booking_view = _ensure_privilege(
+            db,
+            key="booking.view",
+            name="View bookings",
+            description="View booking details",
+            module_key="bookings",
+            module_name="Bookings",
+            module_description="Booking management",
+        )
+        _ensure_role_privilege(db, role_model.id, booking_view.id)
+
+    # ✅ If lawyer, ensure Lawyer + LawyerProfile rows exist
+    if user.role == UserRole.lawyer:
+        try:
+            lawyer_row = db.query(Lawyer).filter(Lawyer.email == user.email).first()
+            if not lawyer_row:
+                lawyer_row = Lawyer(name=user.full_name, email=user.email)
+                db.add(lawyer_row)
+                db.commit()
+                db.refresh(lawyer_row)
+
+            profile_row = db.query(LawyerProfile).filter(LawyerProfile.user_id == user.id).first()
+            if not profile_row:
+                profile_row = LawyerProfile(
+                    user_id=user.id,
+                    district="Colombo",
+                    city="Colombo",
+                    specialization="General",
+                    languages=["Sinhala", "English"],
+                    years_of_experience=5,
+                    bio="New lawyer profile",
+                    rating=0.0,
+                    is_verified=False,
+                )
+                db.add(profile_row)
+                db.commit()
+                db.refresh(profile_row)
+
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed creating lawyer records: {e}")
+
+    return user
+
+
+@router.post("/login")
+def login(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    # OAuth2PasswordRequestForm uses 'username' field, but we use it as email
+    email = form_data.username
+    user = get_user_by_email(db, email)
+    if not user:
+        _safe_log_auth(
+            db,
+            event_type="LOGIN",
+            success=False,
+            email=email,
+            request=request,
+            message="INVALID_CREDENTIALS",
+            method="password",
+        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+
+    if getattr(user, "is_active", True) is False or getattr(user, "disabled", False):
+        _safe_log_auth(
+            db,
+            event_type="LOGIN",
+            success=False,
+            email=email,
+            request=request,
+            message="DISABLED",
+            user_id=user.id,
+            method="password",
+        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+
+    if not verify_password(form_data.password, user.hashed_password):
+        _safe_log_auth(
+            db,
+            event_type="LOGIN",
+            success=False,
+            email=email,
+            request=request,
+            message="INVALID_CREDENTIALS",
+            user_id=user.id,
+            method="password",
+        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+
+    # ✅ Store role as string in JWT to avoid enum serialization issues
+    base_claims = {"sub": str(user.id), "role": user.role.value}
+
+    access_token = create_access_token(
+        data=base_claims,
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    refresh_token = create_refresh_token(
+        data=base_claims,
+        expires_delta=timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES),
+    )
+
+    _safe_log_auth(
+        db,
+        event_type="LOGIN",
+        success=True,
+        email=email,
+        request=request,
+        user_id=user.id,
+        method="password",
+    )
+
+    user_payload = UserOut.model_validate(user)
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "must_change_password": user.must_change_password,
+        "user": user_payload,
+    }
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+@router.post("/refresh", response_model=Token)
+def refresh_token(payload: RefreshRequest, db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        decoded = _decode_token(payload.refresh_token, "refresh")
+        user = _get_user_from_payload(decoded, db)
+    except JWTError:
+        raise credentials_exception
+
+    base_claims = {"sub": str(user.id), "role": user.role.value}
+    new_access = create_access_token(base_claims)
+    new_refresh = create_refresh_token(base_claims)
+
+    return Token(
+        access_token=new_access,
+        refresh_token=new_refresh,
+        token_type="bearer",
+        must_change_password=user.must_change_password,
+    )
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+@router.post("/forgot-password")
+def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = get_user_by_email(db, payload.email)
+    if user:
+        raw_token, _expires_at = create_password_reset_token(user.id, db=db)
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        reset_link = f"{frontend_url}/reset-password?token={raw_token}"
+
+        _send_password_reset_email(user.email, reset_link)
+
+    return {"message": "If the email exists, a reset link was sent."}
+
+
+@router.post("/reset-password")
+def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be at least 8 characters")
+
+    try:
+        user_id = consume_password_reset_token(payload.token, db=db)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset token")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    user.hashed_password = get_password_hash(payload.new_password)
+    user.must_change_password = False
+    db.commit()
+
+    return {"message": "Password reset successful"}
+
+
+@router.post("/change-password", response_model=GenericMessageResponse)
+def change_password(
+    payload: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not verify_password(payload.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be at least 8 characters")
+
+    current_user.hashed_password = get_password_hash(payload.new_password)
+    current_user.must_change_password = False
+    db.commit()
+
+    return GenericMessageResponse(message="Password updated successfully")
+
+
+@router.get("/me", response_model=UserMeOut)
+def get_me(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    role_rows = (
+        db.query(RoleModel)
+        .join(UserRoleModel, UserRoleModel.role_id == RoleModel.id)
+        .filter(UserRoleModel.user_id == current_user.id)
+        .order_by(RoleModel.name.asc())
+        .all()
+    )
+    roles = [r.name for r in role_rows]
+    privileges = sorted(get_user_effective_privilege_keys(db, current_user.id))
+    return UserMeOut(
+        id=current_user.id,
+        full_name=current_user.full_name,
+        email=current_user.email,
+        role=current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
+        roles=roles,
+        effective_privileges=privileges,
+        created_at=current_user.created_at,
+    )
+
+
+@router.post("/logout")
+def logout(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _safe_log_auth(
+        db,
+        event_type="LOGOUT",
+        success=True,
+        email=current_user.email,
+        request=request,
+        user_id=current_user.id,
+        method="token",
+    )
+    return {"message": "Logged out"}
+
+
+# ============================================================================
+# TEMPORARY DEV ENDPOINT - DELETE BEFORE PRODUCTION
+# ============================================================================
+@router.post("/dev/create-admin")
+def create_admin_user(db: Session = Depends(get_db)):
+    admin_email = "admin@lexiconnect.com"
+
+    existing = get_user_by_email(db, admin_email)
+    if existing:
+        return {"message": "Admin user already exists", "email": admin_email}
+
+    hashed_password = get_password_hash("admin123")
+    admin_user = User(
+        email=admin_email,
+        full_name="System Admin",
+        hashed_password=hashed_password,
+        role=UserRole.admin,
+        phone=None,
+    )
+    db.add(admin_user)
+    db.commit()
+    db.refresh(admin_user)
+
+    return {
+        "message": "Admin user created successfully",
+        "email": admin_email,
+        "password": "admin123",
+        "role": "admin",
+    }

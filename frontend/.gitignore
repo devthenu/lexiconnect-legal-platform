@@ -1,0 +1,19 @@
+cat << EOF >> .gitignore
+
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# Alembic
+backend/alembic/__pycache__/
+
+# Node
+node_modules/
+
+# Uploads
+backend/uploads/
+
+# OS
+.DS_Store
+EOF
