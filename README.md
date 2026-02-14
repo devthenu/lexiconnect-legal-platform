@@ -204,13 +204,13 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 LexiConnect is a university group project.
 
 Team (Group 06)
-- D. Thenujayan — Group Leader / Systems Integration
-- Y. Chapa — UI and UX
-- W. A. Methsarani — Localization and Forms
-- D. Vithana — QA and Data Integrity
-- P. Udavi — Documentation
+- D. Thenujayan â€” Group Leader / Systems Integration
+- Y. Chapa â€” UI and UX
+- W. A. Methsarani â€” Localization and Forms
+- D. Vithana â€” QA and Data Integrity
+- P. Udavi â€” Documentation
 
-Original university repository: <UNIVERSITY_REPO_URL>
+Original university repository: (https://github.com/S-W-Development-Group-Project-UOG-4-7/LexiConnect)
 
 ## Project Status
 This project is actively maintained for academic purposes. Future improvements (not yet implemented) could include:
