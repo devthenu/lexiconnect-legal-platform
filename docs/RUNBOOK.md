@@ -306,16 +306,14 @@ docker compose -f docker-compose.prod.yml logs --tail=200 backend
 
 ## 10. Evidence (Screenshots)
 
-Place screenshots in: `docs/screenshots/`
-
-| File | Caption |
-|---|---|
-| `01-ec2-instance-overview.png` | EC2 instance running (public IP, status checks) |
-| `02-ec2-security-group-inbound.png` | EC2 SG inbound rules (22 + 80) |
-| `03-rds-endpoint-and-security.png` | RDS endpoint + SG inbound from EC2 SG |
-| `04-ssh-login.png` | Successful SSH login |
-| `05-swap-enabled-free-m.png` | Swap enabled output (`free -m`) |
-| `06-docker-compose-ps.png` | Containers running (`docker compose ps`) |
-| `07-health-checks.png` | Health checks via `curl` |
-| `08-swagger-via-nginx.png` | Swagger accessible via Nginx |
-| `09-frontend-homepage.png` | Frontend homepage working via public IP |
+| File | Caption | Preview |
+|---|---|---|
+| [`01-ec2-instance-overview.png`](screenshots/01-ec2-instance-overview.png) | EC2 instance running (public IP, status checks) | ![01-ec2-instance-overview](screenshots/01-ec2-instance-overview.png) |
+| [`02-ec2-security-group-inbound.png`](screenshots/02-ec2-security-group-inbound.png) | EC2 SG inbound rules (22 + 80) | ![02-ec2-security-group-inbound](screenshots/02-ec2-security-group-inbound.png) |
+| [`03-rds-endpoint-and-security.png`](screenshots/03-rds-endpoint-and-security.png) | RDS endpoint + SG inbound from EC2 SG | ![03-rds-endpoint-and-security](screenshots/03-rds-endpoint-and-security.png) |
+| [`04-ssh-login.png`](screenshots/04-ssh-login.png) | Successful SSH login | ![04-ssh-login](screenshots/04-ssh-login.png) |
+| [`05-swap-enabled-free-m.png`](screenshots/05-swap-enabled-free-m.png) | Swap enabled output (`free -m`) | ![05-swap-enabled-free-m](screenshots/05-swap-enabled-free-m.png) |
+| [`06-docker-compose-ps.png`](screenshots/06-docker-compose-ps.png) | Containers running (`docker compose ps`) | ![06-docker-compose-ps](screenshots/06-docker-compose-ps.png) |
+| [`07-health-checks.png`](screenshots/07-health-checks.png) | Health checks via `curl` | ![07-health-checks](screenshots/07-health-checks.png) |
+| [`08-swagger-via-nginx.png`](screenshots/08-swagger-via-nginx.png) | Swagger accessible via Nginx | ![08-swagger-via-nginx](screenshots/08-swagger-via-nginx.png) |
+| [`09-frontend-homepage.png`](screenshots/09-frontend-homepage.png) | Frontend homepage working via public IP | ![09-frontend-homepage](screenshots/09-frontend-homepage.png) |
