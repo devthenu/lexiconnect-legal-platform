@@ -5,6 +5,7 @@ import api from "../services/api";
 import { lawyerListIncomingBookings } from "../services/bookings";
 import { getCaseFeed, getMyCaseRequests } from "../features/cases/services/cases.service";
 import { getMyKyc } from "../features/lawyer_kyc/services/lawyerKyc.service";
+import { normalizeError } from "../utils/normalizeError";
 import "./lawyer-ui.css";
 
 export default function LawyerDashboard() {
@@ -109,11 +110,7 @@ export default function LawyerDashboard() {
         });
       } catch (err) {
         if (!active) return;
-        const message =
-          err?.response?.data?.detail ||
-          err?.response?.data?.message ||
-          "Failed to load dashboard metrics.";
-        setKpisError(message);
+        setKpisError(normalizeError(err, "Failed to load dashboard metrics."));
       } finally {
         if (active) setKpisLoading(false);
       }
@@ -136,11 +133,7 @@ export default function LawyerDashboard() {
         setCaseFeed(Array.isArray(data) ? data : []);
       } catch (err) {
         if (!active) return;
-        const message =
-          err?.response?.data?.detail ||
-          err?.response?.data?.message ||
-          "Failed to load case feed.";
-        setCaseFeedError(message);
+        setCaseFeedError(normalizeError(err, "Failed to load case feed."));
         setCaseFeed([]);
       } finally {
         if (active) setCaseFeedLoading(false);

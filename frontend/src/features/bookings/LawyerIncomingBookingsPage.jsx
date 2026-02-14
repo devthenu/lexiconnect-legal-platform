@@ -5,6 +5,7 @@ import {
   lawyerConfirmBooking,
   lawyerRejectBooking,
 } from "../../services/bookings";
+import { normalizeError } from "../../utils/normalizeError";
 import "../../pages/availability-ui.css";
 import Can from "../../components/Can";
 
@@ -37,13 +38,7 @@ const LawyerIncomingBookingsPage = () => {
       if (err?.response?.status === 404) {
         setError("Incoming bookings endpoint not available.");
       } else {
-        // Show actual API errors for other cases
-        const message =
-          err?.response?.data?.detail ||
-          err?.response?.data?.message ||
-          err?.message ||
-          "Failed to load incoming bookings.";
-        setError(message);
+        setError(normalizeError(err, "Failed to load incoming bookings."));
       }
     } finally {
       setLoading(false);
@@ -75,9 +70,7 @@ const LawyerIncomingBookingsPage = () => {
         return;
       }
       const message =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "Unable to confirm booking.";
+        normalizeError(err, "Unable to confirm booking.");
       setError(message);
     } finally {
       setActionId(null);
@@ -104,9 +97,7 @@ const LawyerIncomingBookingsPage = () => {
         return;
       }
       const message =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "Unable to reject booking.";
+        normalizeError(err, "Unable to reject booking.");
       setError(message);
     } finally {
       setActionId(null);

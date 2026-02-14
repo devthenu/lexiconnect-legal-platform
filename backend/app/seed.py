@@ -279,7 +279,8 @@ def seed_demo_disputes(db: Session):
 # ENTRY POINT
 # ======================================================
 def seed_all(db: Session):
-    seed_rbac(db)
     seed_demo_users(db)
     seed_demo_branches(db)
     seed_demo_disputes(db)
+    # Run RBAC after user seeding so user_roles links are created consistently.
+    seed_rbac(db)

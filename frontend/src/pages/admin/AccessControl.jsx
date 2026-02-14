@@ -1,8 +1,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import api from "../../services/api";
+import { normalizeError } from "../../utils/normalizeError";
 import "./AccessControl.css";
-
 const tabs = [
   { id: "roles", label: "Roles & Permissions" },
   { id: "users", label: "Users" },
@@ -125,11 +125,7 @@ const AccessControl = () => {
       } else if (status >= 500) {
         setError("Failed to load access control data.");
       } else {
-        const message =
-          err?.response?.data?.detail ||
-          err?.response?.data?.message ||
-          "Failed to load access control data.";
-        setError(message);
+        setError(normalizeError(err, "Failed to load access control data."));
       }
     } finally {
       setLoading(false);
@@ -152,11 +148,7 @@ const AccessControl = () => {
       setUserPage(data?.page || nextPage);
       setUserPageSize(data?.page_size || nextSize);
     } catch (err) {
-      const message =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "Failed to load users.";
-      setError(message);
+      setError(normalizeError(err, "Failed to load users."));
     } finally {
       setLoading(false);
     }
@@ -189,11 +181,7 @@ const AccessControl = () => {
       setSuccess("Role created.");
       setLastUpdated(new Date());
     } catch (err) {
-      const message =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "Failed to create role.";
-      setError(message);
+      setError(normalizeError(err, "Failed to create role."));
     }
   };
 
@@ -210,11 +198,7 @@ const AccessControl = () => {
       setInitialRolePrivilegeKeys(data || []);
       setExpandedModules(new Set());
     } catch (err) {
-      const message =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "Failed to load role privileges.";
-      setError(message);
+      setError(normalizeError(err, "Failed to load role privileges."));
     }
   };
 
@@ -232,11 +216,7 @@ const AccessControl = () => {
       setSuccess("Role details updated.");
       setLastUpdated(new Date());
     } catch (err) {
-      const message =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "Failed to update role.";
-      setError(message);
+      setError(normalizeError(err, "Failed to update role."));
     }
   };
 
@@ -255,11 +235,7 @@ const AccessControl = () => {
       setSuccess("Role deleted.");
       setLastUpdated(new Date());
     } catch (err) {
-      const message =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "Failed to delete role.";
-      setError(message);
+      setError(normalizeError(err, "Failed to delete role."));
     }
   };
 
@@ -321,11 +297,7 @@ const AccessControl = () => {
       setSuccess("Role permissions updated.");
       setLastUpdated(new Date());
     } catch (err) {
-      const message =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "Failed to update role permissions.";
-      setError(message);
+      setError(normalizeError(err, "Failed to update role permissions."));
     } finally {
       setSaving(false);
     }
@@ -353,11 +325,7 @@ const AccessControl = () => {
       setUserDenyOverrides(overrides.filter((o) => o.effect === "deny").map((o) => o.privilege_key));
       setLastUpdated(new Date());
     } catch (err) {
-      const message =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "Failed to load user access.";
-      setError(message);
+      setError(normalizeError(err, "Failed to load user access."));
     }
   };
 
@@ -378,11 +346,7 @@ const AccessControl = () => {
       setSuccess("User roles updated.");
       setLastUpdated(new Date());
     } catch (err) {
-      const message =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "Failed to update user roles.";
-      setError(message);
+      setError(normalizeError(err, "Failed to update user roles."));
     } finally {
       setSaving(false);
     }
@@ -420,11 +384,7 @@ const AccessControl = () => {
       setSuccess("Overrides saved.");
       setLastUpdated(new Date());
     } catch (err) {
-      const message =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "Failed to update overrides.";
-      setError(message);
+      setError(normalizeError(err, "Failed to update overrides."));
     } finally {
       setSaving(false);
     }
@@ -1233,3 +1193,5 @@ const AccessControl = () => {
 };
 
 export default AccessControl;
+
+

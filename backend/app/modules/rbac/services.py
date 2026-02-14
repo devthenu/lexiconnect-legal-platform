@@ -1,13 +1,47 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.modules.rbac.models import Privilege, RolePrivilege, UserPrivilegeOverride, UserRole
+from app.models.user import User
+from app.modules.rbac.models import Privilege, Role, RolePrivilege, UserPrivilegeOverride, UserRole
 
 
 def _get_cache(db: Session) -> dict:
     return db.info.setdefault("rbac_cache", {})
+
+
+def _normalize_user_role_name(raw_role) -> str | None:
+    if raw_role is None:
+        return None
+
+    if hasattr(raw_role, "name"):
+        name = str(raw_role.name)
+    else:
+        name = str(raw_role)
+
+    if "." in name:
+        name = name.split(".")[-1]
+
+    name = name.strip().upper()
+    if not name:
+        return None
+
+    # Backward compatibility: apprentice users can map to the existing CLERK system role.
+    if name == "APPRENTICE":
+        return "CLERK"
+    return name
+
+
+def _fallback_role_id_from_user_column(db: Session, user_id: int) -> int | None:
+    raw_role = db.execute(select(User.role).where(User.id == user_id)).scalar_one_or_none()
+    normalized = _normalize_user_role_name(raw_role)
+    if not normalized:
+        return None
+
+    return db.execute(
+        select(Role.id).where(func.lower(Role.name) == normalized.lower())
+    ).scalar_one_or_none()
 
 
 def get_user_roles(db: Session, user_id: int) -> list[str]:
@@ -21,6 +55,11 @@ def get_user_roles(db: Session, user_id: int) -> list[str]:
         .where(UserRole.user_id == user_id)
     )
     role_ids = [row[0] for row in db.execute(stmt).all()]
+
+    fallback_role_id = _fallback_role_id_from_user_column(db, user_id)
+    if fallback_role_id and fallback_role_id not in role_ids:
+        role_ids.append(fallback_role_id)
+
     cache[cache_key] = role_ids
     return role_ids
 
