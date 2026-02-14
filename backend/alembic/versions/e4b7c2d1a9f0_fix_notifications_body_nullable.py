@@ -18,34 +18,39 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-def upgrade():
-    op.alter_column(
-        "notifications",
-        "body",
-        existing_type=sa.Text(),
-        nullable=True,
-    )
-    op.alter_column(
-        "notifications",
-        "meta",
-        existing_type=sa.JSON(),
-        nullable=True,
-        server_default=sa.text("'{}'::json"),
+def upgrade() -> None:
+    # Only alter if the column exists (works on fresh DB + old DB)
+    op.execute(
+        """
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_name = 'notifications'
+              AND column_name = 'body'
+          ) THEN
+            ALTER TABLE notifications ALTER COLUMN body DROP NOT NULL;
+          END IF;
+        END $$;
+        """
     )
 
 
-def downgrade():
-    op.execute("UPDATE notifications SET body = message WHERE body IS NULL")
-    op.alter_column(
-        "notifications",
-        "body",
-        existing_type=sa.Text(),
-        nullable=False,
-    )
-    op.alter_column(
-        "notifications",
-        "meta",
-        existing_type=sa.JSON(),
-        nullable=False,
-        server_default=None,
+def downgrade() -> None:
+    # Downgrade only if column exists
+    op.execute(
+        """
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_name = 'notifications'
+              AND column_name = 'body'
+          ) THEN
+            ALTER TABLE notifications ALTER COLUMN body SET NOT NULL;
+          END IF;
+        END $$;
+        """
     )
