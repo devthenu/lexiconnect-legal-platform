@@ -17,3 +17,7 @@ backend/uploads/
 # OS
 .DS_Store
 EOF
+
+frontend/dist/
+dist/
+build/
