@@ -8,40 +8,59 @@ APP_DIR="/home/ec2-user/LexiConnect"
 DEPLOY_DIR="$APP_DIR/deploy"
 
 echo "==> Update OS"
-dnf -y update || true
+dnf -y update
 
 echo "==> Fix curl conflict on AL2023 (curl-minimal vs curl)"
-# This prevents the exact failure you saw in cloud-init/user-data.log
+# AL2023 often has curl-minimal installed; some installs need full curl
 dnf -y swap curl-minimal curl --allowerasing || true
 
 echo "==> Install base tools"
-dnf -y install dnf-plugins-core git awscli unzip curl --allowerasing
+dnf -y install git awscli unzip curl --allowerasing
 
-echo "==> Add Docker CE repo"
-dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+echo "==> Install Docker from Amazon Linux repos (AL2023)"
+dnf -y install docker || true
 
-echo "==> Install Docker + Compose plugin"
-dnf -y install docker-ce docker-ce-cli containerd.io docker-compose-plugin --allowerasing
-
-echo "==> Enable Docker"
+echo "==> Enable + start Docker"
 systemctl enable --now docker
 systemctl status docker --no-pager || true
 
-echo "==> Verify Docker"
+echo "==> Verify docker exists"
 docker --version
+
+echo "==> Install docker compose (plugin or manual)"
+# Try AL2023 package first (may exist in some repos)
+if ! docker compose version >/dev/null 2>&1; then
+  dnf -y install docker-compose-plugin || true
+fi
+
+# If still missing, install compose v2 plugin manually
+if ! docker compose version >/dev/null 2>&1; then
+  ARCH="$(uname -m)"
+  case "$ARCH" in
+    x86_64)  COMPOSE_ARCH="x86_64" ;;
+    aarch64) COMPOSE_ARCH="aarch64" ;;
+    *) echo "Unsupported arch: $ARCH" ; exit 1 ;;
+  esac
+
+  COMPOSE_VERSION="v2.27.0"
+  mkdir -p /usr/local/lib/docker/cli-plugins
+  curl -fsSL \
+    "https://github.com/docker/compose/releases/download/$COMPOSE_VERSION/docker-compose-linux-$COMPOSE_ARCH" \
+    -o /usr/local/lib/docker/cli-plugins/docker-compose
+  chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+fi
+
+echo "==> Verify compose"
 docker compose version
 
 echo "==> Allow ec2-user to run docker"
-usermod -aG docker ec2-user || true
+usermod -aG docker ec2-user
 
 echo "==> Clone repo (if missing)"
-mkdir -p /home/ec2-user
 cd /home/ec2-user
-
 if [ ! -d "$APP_DIR" ]; then
-  git clone "${repo_url}" LexiConnect
+  git clone ${repo_url} LexiConnect
 fi
-
 chown -R ec2-user:ec2-user "$APP_DIR"
 
 echo "==> Fetch required SSM params"
@@ -56,7 +75,6 @@ EMAIL_FROM="$(aws ssm get-parameter --name "$PARAM_PREFIX/EMAIL_FROM" --query Pa
 
 echo "==> Write deploy/.env.prod"
 mkdir -p "$DEPLOY_DIR"
-
 cat > "$DEPLOY_DIR/.env.prod" <<EOF
 DATABASE_URL=$DATABASE_URL
 FRONTEND_URL=$FRONTEND_URL
@@ -72,10 +90,7 @@ chown ec2-user:ec2-user "$DEPLOY_DIR/.env.prod"
 chmod 600 "$DEPLOY_DIR/.env.prod"
 
 echo "==> Boot app via docker compose"
-# give docker a moment
 sleep 3
-
-# Use sg to ensure docker group is applied in this non-interactive context
-su - ec2-user -c "sg docker -c 'cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml up -d --build'"
+su - ec2-user -c "cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml up -d --build"
 
 echo "==> Done"
