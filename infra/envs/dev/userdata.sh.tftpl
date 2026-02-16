@@ -1,0 +1,91 @@
+#!/bin/bash
+set -euxo pipefail
+exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
+
+REGION="ap-south-1"
+PARAM_PREFIX="/lexiconnect/${env}"
+APP_DIR="/home/ec2-user/LexiConnect"
+DEPLOY_DIR="${APP_DIR}/deploy"
+
+echo "==> Updating OS + installing prerequisites"
+dnf -y update
+dnf -y install git awscli curl unzip
+
+echo "==> Installing Docker (AL2023)"
+# AL2023 usually provides docker as 'docker' (not docker-compose-plugin)
+dnf -y install docker || true
+
+echo "==> Enabling + starting Docker"
+systemctl enable --now docker || true
+systemctl status docker --no-pager || true
+
+echo "==> Installing Docker Compose plugin manually (if missing)"
+# Ensure docker CLI exists
+if ! command -v docker >/dev/null 2>&1; then
+  echo "ERROR: docker command not found after install"
+  exit 1
+fi
+
+# Install compose plugin if 'docker compose' is missing
+if ! docker compose version >/dev/null 2>&1; then
+  ARCH="$(uname -m)"
+  case "$ARCH" in
+    x86_64)  COMPOSE_ARCH="x86_64" ;;
+    aarch64) COMPOSE_ARCH="aarch64" ;;
+    *) echo "Unsupported arch: $ARCH" ; exit 1 ;;
+  esac
+
+  COMPOSE_VERSION="v2.27.0"
+  mkdir -p /usr/local/lib/docker/cli-plugins
+  curl -fsSL \
+    "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${COMPOSE_ARCH}" \
+    -o /usr/local/lib/docker/cli-plugins/docker-compose
+  chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+fi
+
+echo "==> Verify docker + compose"
+docker --version
+docker compose version
+
+echo "==> Allow ec2-user to run docker"
+usermod -aG docker ec2-user || true
+
+echo "==> Clone repo (if missing)"
+cd /home/ec2-user
+if [ ! -d "${APP_DIR}" ]; then
+  git clone ${repo_url} LexiConnect
+fi
+chown -R ec2-user:ec2-user "${APP_DIR}"
+
+echo "==> Fetch required SSM params"
+DATABASE_URL="$(aws ssm get-parameter --name "${PARAM_PREFIX}/DATABASE_URL" --with-decryption --query Parameter.Value --output text --region "${REGION}")"
+FRONTEND_URL="$(aws ssm get-parameter --name "${PARAM_PREFIX}/FRONTEND_URL" --query Parameter.Value --output text --region "${REGION}")"
+ENV_VAL="$(aws ssm get-parameter --name "${PARAM_PREFIX}/ENV" --query Parameter.Value --output text --region "${REGION}")"
+DEBUG_VAL="$(aws ssm get-parameter --name "${PARAM_PREFIX}/DEBUG" --query Parameter.Value --output text --region "${REGION}")"
+
+SMTP_HOST="$(aws ssm get-parameter --name "${PARAM_PREFIX}/SMTP_HOST" --query Parameter.Value --output text --region "${REGION}" 2>/dev/null || true)"
+SMTP_PORT="$(aws ssm get-parameter --name "${PARAM_PREFIX}/SMTP_PORT" --query Parameter.Value --output text --region "${REGION}" 2>/dev/null || true)"
+EMAIL_FROM="$(aws ssm get-parameter --name "${PARAM_PREFIX}/EMAIL_FROM" --query Parameter.Value --output text --region "${REGION}" 2>/dev/null || true)"
+
+echo "==> Write deploy/.env.prod"
+mkdir -p "${DEPLOY_DIR}"
+cat > "${DEPLOY_DIR}/.env.prod" <<EOF
+DATABASE_URL=${DATABASE_URL}
+FRONTEND_URL=${FRONTEND_URL}
+ENV=${ENV_VAL}
+DEBUG=${DEBUG_VAL}
+EOF
+
+if [ -n "${SMTP_HOST}" ]; then echo "SMTP_HOST=${SMTP_HOST}" >> "${DEPLOY_DIR}/.env.prod"; fi
+if [ -n "${SMTP_PORT}" ]; then echo "SMTP_PORT=${SMTP_PORT}" >> "${DEPLOY_DIR}/.env.prod"; fi
+if [ -n "${EMAIL_FROM}" ]; then echo "EMAIL_FROM=${EMAIL_FROM}" >> "${DEPLOY_DIR}/.env.prod"; fi
+
+chown ec2-user:ec2-user "${DEPLOY_DIR}/.env.prod"
+chmod 600 "${DEPLOY_DIR}/.env.prod"
+
+echo "==> Boot app via docker compose"
+# Wait a moment to ensure docker is fully ready
+sleep 3
+su - ec2-user -c "cd ${DEPLOY_DIR} && docker compose -f docker-compose.prod.yml up -d --build"
+
+echo "==> Done"

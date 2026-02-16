@@ -47,3 +47,11 @@
 frontend/dist/
 dist/
 build/
+**/.terraform/*
+**/*.tfstate
+**/*.tfstate.*
+# Terraform
+**/.terraform/*
+**/*.tfstate
+**/*.tfstate.*
+**/errored.tfstate
