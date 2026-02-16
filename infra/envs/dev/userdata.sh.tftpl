@@ -5,45 +5,29 @@ exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&
 REGION="ap-south-1"
 PARAM_PREFIX="/lexiconnect/${env}"
 APP_DIR="/home/ec2-user/LexiConnect"
-DEPLOY_DIR="${APP_DIR}/deploy"
+DEPLOY_DIR="$APP_DIR/deploy"
 
-echo "==> Updating OS + installing prerequisites"
-dnf -y update
-dnf -y install git awscli curl unzip
+echo "==> Update OS"
+dnf -y update || true
 
-echo "==> Installing Docker (AL2023)"
-# AL2023 usually provides docker as 'docker' (not docker-compose-plugin)
-dnf -y install docker || true
+echo "==> Fix curl conflict on AL2023 (curl-minimal vs curl)"
+# This prevents the exact failure you saw in cloud-init/user-data.log
+dnf -y swap curl-minimal curl --allowerasing || true
 
-echo "==> Enabling + starting Docker"
-systemctl enable --now docker || true
+echo "==> Install base tools"
+dnf -y install dnf-plugins-core git awscli unzip curl --allowerasing
+
+echo "==> Add Docker CE repo"
+dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+echo "==> Install Docker + Compose plugin"
+dnf -y install docker-ce docker-ce-cli containerd.io docker-compose-plugin --allowerasing
+
+echo "==> Enable Docker"
+systemctl enable --now docker
 systemctl status docker --no-pager || true
 
-echo "==> Installing Docker Compose plugin manually (if missing)"
-# Ensure docker CLI exists
-if ! command -v docker >/dev/null 2>&1; then
-  echo "ERROR: docker command not found after install"
-  exit 1
-fi
-
-# Install compose plugin if 'docker compose' is missing
-if ! docker compose version >/dev/null 2>&1; then
-  ARCH="$(uname -m)"
-  case "$ARCH" in
-    x86_64)  COMPOSE_ARCH="x86_64" ;;
-    aarch64) COMPOSE_ARCH="aarch64" ;;
-    *) echo "Unsupported arch: $ARCH" ; exit 1 ;;
-  esac
-
-  COMPOSE_VERSION="v2.27.0"
-  mkdir -p /usr/local/lib/docker/cli-plugins
-  curl -fsSL \
-    "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${COMPOSE_ARCH}" \
-    -o /usr/local/lib/docker/cli-plugins/docker-compose
-  chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-fi
-
-echo "==> Verify docker + compose"
+echo "==> Verify Docker"
 docker --version
 docker compose version
 
@@ -51,41 +35,47 @@ echo "==> Allow ec2-user to run docker"
 usermod -aG docker ec2-user || true
 
 echo "==> Clone repo (if missing)"
+mkdir -p /home/ec2-user
 cd /home/ec2-user
-if [ ! -d "${APP_DIR}" ]; then
-  git clone ${repo_url} LexiConnect
+
+if [ ! -d "$APP_DIR" ]; then
+  git clone "${repo_url}" LexiConnect
 fi
-chown -R ec2-user:ec2-user "${APP_DIR}"
+
+chown -R ec2-user:ec2-user "$APP_DIR"
 
 echo "==> Fetch required SSM params"
-DATABASE_URL="$(aws ssm get-parameter --name "${PARAM_PREFIX}/DATABASE_URL" --with-decryption --query Parameter.Value --output text --region "${REGION}")"
-FRONTEND_URL="$(aws ssm get-parameter --name "${PARAM_PREFIX}/FRONTEND_URL" --query Parameter.Value --output text --region "${REGION}")"
-ENV_VAL="$(aws ssm get-parameter --name "${PARAM_PREFIX}/ENV" --query Parameter.Value --output text --region "${REGION}")"
-DEBUG_VAL="$(aws ssm get-parameter --name "${PARAM_PREFIX}/DEBUG" --query Parameter.Value --output text --region "${REGION}")"
+DATABASE_URL="$(aws ssm get-parameter --name "$PARAM_PREFIX/DATABASE_URL" --with-decryption --query Parameter.Value --output text --region "$REGION")"
+FRONTEND_URL="$(aws ssm get-parameter --name "$PARAM_PREFIX/FRONTEND_URL" --query Parameter.Value --output text --region "$REGION")"
+ENV_VAL="$(aws ssm get-parameter --name "$PARAM_PREFIX/ENV" --query Parameter.Value --output text --region "$REGION")"
+DEBUG_VAL="$(aws ssm get-parameter --name "$PARAM_PREFIX/DEBUG" --query Parameter.Value --output text --region "$REGION")"
 
-SMTP_HOST="$(aws ssm get-parameter --name "${PARAM_PREFIX}/SMTP_HOST" --query Parameter.Value --output text --region "${REGION}" 2>/dev/null || true)"
-SMTP_PORT="$(aws ssm get-parameter --name "${PARAM_PREFIX}/SMTP_PORT" --query Parameter.Value --output text --region "${REGION}" 2>/dev/null || true)"
-EMAIL_FROM="$(aws ssm get-parameter --name "${PARAM_PREFIX}/EMAIL_FROM" --query Parameter.Value --output text --region "${REGION}" 2>/dev/null || true)"
+SMTP_HOST="$(aws ssm get-parameter --name "$PARAM_PREFIX/SMTP_HOST" --query Parameter.Value --output text --region "$REGION" 2>/dev/null || true)"
+SMTP_PORT="$(aws ssm get-parameter --name "$PARAM_PREFIX/SMTP_PORT" --query Parameter.Value --output text --region "$REGION" 2>/dev/null || true)"
+EMAIL_FROM="$(aws ssm get-parameter --name "$PARAM_PREFIX/EMAIL_FROM" --query Parameter.Value --output text --region "$REGION" 2>/dev/null || true)"
 
 echo "==> Write deploy/.env.prod"
-mkdir -p "${DEPLOY_DIR}"
-cat > "${DEPLOY_DIR}/.env.prod" <<EOF
-DATABASE_URL=${DATABASE_URL}
-FRONTEND_URL=${FRONTEND_URL}
-ENV=${ENV_VAL}
-DEBUG=${DEBUG_VAL}
+mkdir -p "$DEPLOY_DIR"
+
+cat > "$DEPLOY_DIR/.env.prod" <<EOF
+DATABASE_URL=$DATABASE_URL
+FRONTEND_URL=$FRONTEND_URL
+ENV=$ENV_VAL
+DEBUG=$DEBUG_VAL
 EOF
 
-if [ -n "${SMTP_HOST}" ]; then echo "SMTP_HOST=${SMTP_HOST}" >> "${DEPLOY_DIR}/.env.prod"; fi
-if [ -n "${SMTP_PORT}" ]; then echo "SMTP_PORT=${SMTP_PORT}" >> "${DEPLOY_DIR}/.env.prod"; fi
-if [ -n "${EMAIL_FROM}" ]; then echo "EMAIL_FROM=${EMAIL_FROM}" >> "${DEPLOY_DIR}/.env.prod"; fi
+if [ -n "$SMTP_HOST" ]; then echo "SMTP_HOST=$SMTP_HOST" >> "$DEPLOY_DIR/.env.prod"; fi
+if [ -n "$SMTP_PORT" ]; then echo "SMTP_PORT=$SMTP_PORT" >> "$DEPLOY_DIR/.env.prod"; fi
+if [ -n "$EMAIL_FROM" ]; then echo "EMAIL_FROM=$EMAIL_FROM" >> "$DEPLOY_DIR/.env.prod"; fi
 
-chown ec2-user:ec2-user "${DEPLOY_DIR}/.env.prod"
-chmod 600 "${DEPLOY_DIR}/.env.prod"
+chown ec2-user:ec2-user "$DEPLOY_DIR/.env.prod"
+chmod 600 "$DEPLOY_DIR/.env.prod"
 
 echo "==> Boot app via docker compose"
-# Wait a moment to ensure docker is fully ready
+# give docker a moment
 sleep 3
-su - ec2-user -c "cd ${DEPLOY_DIR} && docker compose -f docker-compose.prod.yml up -d --build"
+
+# Use sg to ensure docker group is applied in this non-interactive context
+su - ec2-user -c "sg docker -c 'cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml up -d --build'"
 
 echo "==> Done"
