@@ -270,18 +270,18 @@ resource "aws_db_instance" "postgres" {
 # ---------------------------
 # EC2 (App)
 # ---------------------------
-data "aws_ami" "al2023" {
+data "aws_ami" "al2" {
   most_recent = true
   owners      = ["amazon"]
 
   filter {
     name   = "name"
-    values = ["al2023-ami-2023*-x86_64"]
+    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
   }
 }
 
 resource "aws_instance" "app" {
-  ami                         = data.aws_ami.al2023.id
+  ami                         = data.aws_ami.al2.id
   instance_type               = "t3.micro"
   subnet_id                   = aws_subnet.public[0].id
   vpc_security_group_ids      = [aws_security_group.ec2.id]
@@ -302,3 +302,4 @@ resource "aws_lb_target_group_attachment" "ec2" {
   target_id        = aws_instance.app.id
   port             = 80
 }
+

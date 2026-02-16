@@ -8,55 +8,42 @@ APP_DIR="/home/ec2-user/LexiConnect"
 DEPLOY_DIR="$APP_DIR/deploy"
 
 echo "==> Update OS"
-dnf -y update
+yum update -y
 
-echo "==> Fix curl conflict on AL2023 (curl-minimal vs curl)"
-# AL2023 often has curl-minimal installed; some installs need full curl
-dnf -y swap curl-minimal curl --allowerasing || true
+echo "==> Install base packages"
+yum install -y git awscli curl unzip
 
-echo "==> Install base tools"
-dnf -y install git awscli unzip curl --allowerasing
-
-echo "==> Install Docker from Amazon Linux repos (AL2023)"
-dnf -y install docker || true
-
-echo "==> Enable + start Docker"
-systemctl enable --now docker
+echo "==> Install Docker"
+amazon-linux-extras install docker -y
+systemctl enable docker
+systemctl start docker
 systemctl status docker --no-pager || true
 
-echo "==> Verify docker exists"
+echo "==> Install docker compose plugin"
+mkdir -p /usr/local/lib/docker/cli-plugins
+
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64)  COMPOSE_ARCH="x86_64" ;;
+  aarch64) COMPOSE_ARCH="aarch64" ;;
+  *) echo "Unsupported arch: $ARCH" ; exit 1 ;;
+esac
+
+COMPOSE_VERSION="v2.27.0"
+curl -fsSL \
+  "https://github.com/docker/compose/releases/download/$COMPOSE_VERSION/docker-compose-linux-$COMPOSE_ARCH" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+echo "==> Verify docker + compose"
 docker --version
-
-echo "==> Install docker compose (plugin or manual)"
-# Try AL2023 package first (may exist in some repos)
-if ! docker compose version >/dev/null 2>&1; then
-  dnf -y install docker-compose-plugin || true
-fi
-
-# If still missing, install compose v2 plugin manually
-if ! docker compose version >/dev/null 2>&1; then
-  ARCH="$(uname -m)"
-  case "$ARCH" in
-    x86_64)  COMPOSE_ARCH="x86_64" ;;
-    aarch64) COMPOSE_ARCH="aarch64" ;;
-    *) echo "Unsupported arch: $ARCH" ; exit 1 ;;
-  esac
-
-  COMPOSE_VERSION="v2.27.0"
-  mkdir -p /usr/local/lib/docker/cli-plugins
-  curl -fsSL \
-    "https://github.com/docker/compose/releases/download/$COMPOSE_VERSION/docker-compose-linux-$COMPOSE_ARCH" \
-    -o /usr/local/lib/docker/cli-plugins/docker-compose
-  chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-fi
-
-echo "==> Verify compose"
 docker compose version
 
-echo "==> Allow ec2-user to run docker"
+echo "==> Allow ec2-user docker access"
 usermod -aG docker ec2-user
 
-echo "==> Clone repo (if missing)"
+echo "==> Clone repo"
 cd /home/ec2-user
 if [ ! -d "$APP_DIR" ]; then
   git clone ${repo_url} LexiConnect
@@ -73,8 +60,9 @@ SMTP_HOST="$(aws ssm get-parameter --name "$PARAM_PREFIX/SMTP_HOST" --query Para
 SMTP_PORT="$(aws ssm get-parameter --name "$PARAM_PREFIX/SMTP_PORT" --query Parameter.Value --output text --region "$REGION" 2>/dev/null || true)"
 EMAIL_FROM="$(aws ssm get-parameter --name "$PARAM_PREFIX/EMAIL_FROM" --query Parameter.Value --output text --region "$REGION" 2>/dev/null || true)"
 
-echo "==> Write deploy/.env.prod"
+echo "==> Write .env.prod"
 mkdir -p "$DEPLOY_DIR"
+
 cat > "$DEPLOY_DIR/.env.prod" <<EOF
 DATABASE_URL=$DATABASE_URL
 FRONTEND_URL=$FRONTEND_URL
@@ -89,8 +77,8 @@ if [ -n "$EMAIL_FROM" ]; then echo "EMAIL_FROM=$EMAIL_FROM" >> "$DEPLOY_DIR/.env
 chown ec2-user:ec2-user "$DEPLOY_DIR/.env.prod"
 chmod 600 "$DEPLOY_DIR/.env.prod"
 
-echo "==> Boot app via docker compose"
-sleep 3
+echo "==> Boot app"
+sleep 5
 su - ec2-user -c "cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml up -d --build"
 
 echo "==> Done"
