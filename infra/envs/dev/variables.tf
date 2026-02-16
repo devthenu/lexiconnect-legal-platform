@@ -29,7 +29,7 @@ variable "private_db_subnet_cidrs" {
 }
 
 variable "my_ip_cidr" {
-  description = "Your public IP with /32 for SSH (temporary)"
+  description = "My public IP CIDR for SSH access"
   type        = string
 }
 
@@ -58,3 +58,4 @@ variable "db_password" {
   type        = string
   sensitive   = true
 }
+
