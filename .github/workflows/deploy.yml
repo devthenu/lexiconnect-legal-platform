@@ -1,0 +1,38 @@
+name: Deploy to EC2 via SSM
+
+on:
+  workflow_run:
+    workflows: ["Build and Push Images"]
+    types: [completed]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ap-south-1
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: lexiconnect-gha
+
+      - name: Deploy via SSM
+        run: |
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=tag:Name,Values=lexiconnect-dev-app" \
+            --parameters commands='[
+              "set -euxo pipefail",
+              "cd /home/ec2-user/LexiConnect/deploy",
+              "docker compose -f docker-compose.prod.yml pull",
+              "docker compose -f docker-compose.prod.yml up -d",
+              "docker compose -f docker-compose.prod.yml ps"
+            ]' \
+            --comment "Deploy LexiConnect" \
+            --output text
