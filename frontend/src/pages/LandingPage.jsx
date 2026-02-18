@@ -37,7 +37,7 @@ export default function LandingPage() {
   const previewLawyers = useMemo(
     () => [
       { name: "Ayesha Perera", location: "Colombo", focus: "Family Law" },
-      { name: "Nimal Fernando", location: "Kandy", focus: "Property & Conveyancing" },
+      { name: "Darla Fernando", location: "Kandy", focus: "Property & Conveyancing" },
       { name: "Tharindu Silva", location: "Galle", focus: "Corporate & Contracts" },
     ],
     []
