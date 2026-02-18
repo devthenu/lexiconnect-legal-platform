@@ -1,221 +1,119 @@
-# LexiConnect
+﻿# LexiConnect
 
-Location-based lawyer discovery, KYC-verified onboarding, and case-centric booking workflows.
+LexiConnect is a full-stack legal-service platform (FastAPI + React) built as a DevOps/SRE portfolio system. It demonstrates how to run a modern web app on AWS with reproducible infrastructure, containerized delivery, secure runtime controls, and incident-driven operational improvements.
 
-LexiConnect is a university-built, full-stack platform that helps clients find lawyers, request case representation, and schedule verified appointments with controlled document handling and audit trails. It is a scheduling and case-management system, not a law firm and not a source of legal advice. Its system design centers on case-based workflows with RBAC and auditability as first-class concerns.
+## Why this project matters (DevOps/SRE focus)
 
-## Table Of Contents
-- Why It Matters
-- Features By Role
-- Workflow Highlights
-- Security Model
-- Tech Stack
-- Architecture
-- Screenshots
-- Run Locally
-- Environment Variables
-- Academic Report
-- Credits And Attribution
-- Project Status
-
-## Why It Matters
-Legal service workflows are often fragmented across calls, emails, and untracked documents. LexiConnect centralizes discovery, case intake, approvals, booking, and document access so that each step is traceable, role-aware, and auditable.
-
-## Features By Role
-Client
-- Lawyer discovery by district, city, specialization, and language
-- Case intake and case list tracking
-- Booking requests and status updates
-- Document uploads tied to cases and bookings
-- Notifications and activity updates
-
-Lawyer
-- Public profile and specialization management
-- Availability scheduling with exceptions and blackout days
-- Booking confirmation and rejection
-- Token queue management for same-day consultations
-- KYC submission for verification
-- Case feed browsing and case request workflow
-- Case documents access and review links
-
-Clerk
-- Booking visibility based on RBAC privileges
-- Controlled document access per policy
-
-Admin
-- KYC approval and rejection
-- Audit log and authentication log review
-- Dispute tracking and reporting
-- RBAC module and privilege management
-- Administrative metrics and dashboards
-
-## Workflow Highlights
-- Case to booking: client opens a case, lawyers request the case, client approves a lawyer, then a booking is created for that case.
-- KYC verification: lawyers submit KYC and admins approve or reject before a lawyer is considered verified.
-- Document handling: documents are uploaded against a case or booking with role-checked access and review links to support manual approval or feedback.
-- Conflict prevention: booking creation includes slot validation and overlap checks to avoid double-booking.
-- Audit trail: sensitive actions write audit events and authentication logs for traceability.
-
-## Security Model
-- JWT access and refresh tokens for API authentication
-- Role-based access control (RBAC) with module-level privileges
-- Audit logs and auth logs for security-sensitive actions
-- Server-side document access checks for case- and booking-linked files
-
-## Tech Stack
-
-| Layer | Technology |
-| --- | --- |
-| Frontend | React, Vite, Tailwind CSS, React Router, Axios |
-| Backend | FastAPI, SQLAlchemy, Alembic, Python-Jose (JWT), Passlib + bcrypt |
-| Database | PostgreSQL |
-| Dev Services | Docker Compose (PostgreSQL, Mailpit) |
+- Infrastructure as Code with Terraform (VPC, ALB, ASG, private RDS, IAM, remote state).
+- Production-safe network model: ALB edge, backend internal-only, RDS private subnets.
+- Secret-free app bootstrapping via SSM Parameter Store and instance role permissions.
+- CI/CD pipeline with GitHub Actions building/pushing GHCR images and SSM-based deploy.
+- Monitoring and alerting with CloudWatch alarm + SNS notifications.
+- Real incident response documented with RCA and corrective/preventative actions.
 
 ## Architecture
-- React (Vite) SPA communicates with FastAPI REST endpoints
-- FastAPI persists data in PostgreSQL via SQLAlchemy
-- File uploads are stored locally at `backend/uploads` and served from `/uploads`
-- Mailpit captures outbound email during local development
 
-Diagrams
+High-level architecture diagram:
+- `docs/diagrams/architecture.png`
 
-![Architecture Diagram](docs/diagrams/architecture.png)
-![ERD](docs/diagrams/erd.png)
+Detailed architecture and security-group/subnet tables:
+- `docs/ARCHITECTURE.md`
 
-## Screenshots
+## Live Demo
 
-| # | Screen | File |
-| --- | --- | --- |
-| 01 | Landing | [docs/screenshots/01-landing.png](docs/screenshots/01-landing.png) |
-| 02 | Login | [docs/screenshots/02-login.png](docs/screenshots/02-login.png) |
-| 03 | Lawyer search | [docs/screenshots/03-lawyer-search.png](docs/screenshots/03-lawyer-search.png) |
-| 04 | Lawyer profile | [docs/screenshots/04-lawyer-profile.png](docs/screenshots/04-lawyer-profile.png) |
-| 05 | Booking | [docs/screenshots/05-booking.png](docs/screenshots/05-booking.png) |
-| 06 | Document upload | [docs/screenshots/06-document-upload.png](docs/screenshots/06-document-upload.png) |
-| 07 | Client cases | [docs/screenshots/07-client-cases.png](docs/screenshots/07-client-cases.png) |
-| 08 | Lawyer dashboard | [docs/screenshots/08-lawyer-dashboard.png](docs/screenshots/08-lawyer-dashboard.png) |
-| 09 | Lawyer availability | [docs/screenshots/09-lawyer-availability.png](docs/screenshots/09-lawyer-availability.png) |
-| 10 | Lawyer KYC | [docs/screenshots/10-lawyer-kyc.png](docs/screenshots/10-lawyer-kyc.png) |
-| 11 | Lawyer case feed | [docs/screenshots/11-lawyer-case-feed.png](docs/screenshots/11-lawyer-case-feed.png) |
-| 12 | Admin dashboard | [docs/screenshots/12-admin-dashboard.png](docs/screenshots/12-admin-dashboard.png) |
-| 13 | Admin audit log | [docs/screenshots/13-admin-audit-log.png](docs/screenshots/13-admin-audit-log.png) |
-| 14 | RBAC denied | [docs/screenshots/14-rbac-denied.png](docs/screenshots/14-rbac-denied.png) |
+- Demo URL: `http://<ALB_DNS>`
+- Health: `http://<ALB_DNS>/health`
+- API health: `http://<ALB_DNS>/api/health`
 
-## Run Locally
-Docker Compose only starts dependencies (PostgreSQL and Mailpit). Run the backend and frontend manually.
+The demo intentionally uses HTTP because no custom domain is attached for ACM certificate issuance. Production TLS plan: Route53/custom DNS + ACM cert + ALB `:443` + `80 -> 443` redirect + HSTS.
 
-Dependencies
+## Quickstart (Local)
 
-PowerShell
-```powershell
-docker compose up -d
-```
-
-Bash
 ```bash
-docker compose up -d
+cd deploy
+docker compose -f docker-compose.local.yml --env-file .env.example up -d --build
 ```
 
-Backend (FastAPI)
+Local endpoints:
+- Frontend: `http://localhost:5173`
+- Backend API: `http://localhost:8000`
+- Swagger: `http://localhost:8000/docs`
+- Mailpit: `http://localhost:8025`
 
-PowerShell
-```powershell
-cd backend
-copy .env.example .env
-pip install -r requirements.txt
-alembic upgrade head
-uvicorn app.main:app --reload
-```
+Stop local stack:
 
-Bash
 ```bash
-cd backend
-cp .env.example .env
-pip install -r requirements.txt
-alembic upgrade head
-uvicorn app.main:app --reload
+cd deploy
+docker compose -f docker-compose.local.yml down
 ```
 
-Frontend (React + Vite)
+## Production Deployment (AWS)
 
-PowerShell
-```powershell
-cd frontend
-copy .env.example .env
-npm install
-npm run dev
+Primary guides:
+- `docs/INFRASTRUCTURE.md`
+- `docs/RUNBOOK.md`
+
+High-level flow:
+- Provision AWS base with Terraform (`infra/envs/dev`).
+- Store runtime secrets in SSM Parameter Store (`/lexiconnect/dev/*`).
+- Build and publish images to GHCR (`release.yml`).
+- Deploy to EC2 instances via SSM command (`deploy.yml`).
+- Validate ALB health and app/API reachability.
+
+## CI/CD
+
+- Build workflow: `.github/workflows/release.yml`
+- Deploy workflow: `.github/workflows/deploy.yml`
+
+Pipeline behavior:
+- On push to `main`, backend and frontend images are built and pushed to GHCR with `latest` and commit SHA tags.
+- Deploy workflow triggers on successful build (`workflow_run`) and deploys to EC2 via SSM.
+- Deploy uses SHA-pinned tags for deterministic releases and rollback safety.
+
+## Observability
+
+- CloudWatch alarm monitors unhealthy targets (`HealthyHostCount < 1`).
+- SNS sends alert notifications for alarm state transitions.
+- Evidence:
+  - `docs/screenshots/cloudwatch_alarm_in_alarm.png`
+  - `docs/screenshots/sns_email_notification.png`
+  - `docs/screenshots/cloudwatch_alarm_history.png`
+
+## Incident Response
+
+- RCA: `docs/INCIDENT_RCA_ALB_UNHEALTHY_TARGET.md`
+
+## Repo Structure
+
+```text
+.
+├── backend/
+├── frontend/
+├── docs/
+│   ├── diagrams/
+│   ├── screenshots/
+│   ├── ARCHITECTURE.md
+│   ├── INFRASTRUCTURE.md
+│   ├── RUNBOOK.md
+│   ├── SECURITY.md
+│   └── INCIDENT_RCA_ALB_UNHEALTHY_TARGET.md
+├── deploy/
+│   ├── docker-compose.local.yml
+│   ├── docker-compose.prod.yml
+│   ├── nginx/
+│   └── scripts/
+├── infra/
+│   ├── README.md
+│   └── envs/
+└── README.md
 ```
 
-Bash
-```bash
-cd frontend
-cp .env.example .env
-npm install
-npm run dev
-```
+Legacy/non-runtime artifacts are retained under `archive/`.
 
-Local URLs
-- Frontend: http://127.0.0.1:5173
-- API: http://127.0.0.1:8000
-- API Docs (Swagger): http://127.0.0.1:8000/docs
-- Mailpit: http://127.0.0.1:8025
+## License + Disclaimer
 
-## Environment Variables
-Backend: `backend/.env`
-```env
-# Database Configuration
-# PostgreSQL connection string (for Docker Compose setup)
-DATABASE_URL=postgresql+psycopg2://lexiconnect:lexiconnect@127.0.0.1:5432/lexiconnect
+This is a student engineering project for educational demonstration.
 
-# JWT Configuration
-JWT_SECRET=change_me_to_a_secure_random_string
-JWT_ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=60
-
-# Environment variables for seeding demo users
-# Copy this file to .env and adjust values as needed
-
-SEED_DEMO_USERS=true
-
-ADMIN_EMAIL=admin@lexiconnect.local
-ADMIN_PASSWORD=Admin@123
-
-LAWYER_EMAIL=lawyer@lexiconnect.local
-LAWYER_PASSWORD=Lawyer@123
-
-CLIENT_EMAIL=client@lexiconnect.local
-CLIENT_PASSWORD=Client@123
-
-APPRENTICE_EMAIL=apprentice@lexiconnect.local
-APPRENTICE_PASSWORD=Apprentice@123
-```
-
-Frontend: `frontend/.env`
-```env
-# API Base URL for backend
-# Copy this file to .env and adjust values as needed
-VITE_API_BASE_URL=http://127.0.0.1:8000
-```
-
-## Academic Report
-[LexiConnect Final Project Report](LexiConnect_Final_Report.pdf)
-
-## Credits And Attribution
-LexiConnect is a university group project.
-
-Team (Group 06)
-- D. Thenujayan — Group Leader / Systems Integration
-- Y. Chapa — UI and UX
-- W. A. Methsarani — Localization and Forms
-- D. Vithana — QA and Data Integrity
-- P. Udavi — Documentation
-
-Original university repository: (https://github.com/S-W-Development-Group-Project-UOG-4-7/LexiConnect)
-
-## Project Status
-This project is actively maintained for academic purposes. Future improvements (not yet implemented) could include:
-- Full Docker Compose stack for backend and frontend
-- Object storage for uploads (S3 or MinIO)
-- CI pipeline and deployment automation
-- Production deployment hardening
-test deploy 2026-02-18 16:42:50 +05:30
+- Not legal advice.
+- Not a production legal platform.
+- Demo environment hardening is applied pragmatically with AWS free-tier/credit constraints.

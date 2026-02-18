@@ -1,80 +1,65 @@
-# LexiConnect Architecture (AWS)
+﻿# LexiConnect Architecture
 
-## Overview
-LexiConnect is deployed on AWS ap-south-1 using a 3-tier layout:
-- **Edge / Public**: Application Load Balancer (ALB)
-- **App / Compute**: EC2 (Docker Compose: frontend nginx + backend)
-- **Data / Private**: RDS PostgreSQL in private subnets
+## System Overview
 
-Traffic flow:
-Client -> ALB (HTTP:80) -> EC2 (HTTP:80) -> Docker network -> FastAPI (internal) -> RDS (5432)
+LexiConnect runs as a containerized web stack on AWS:
 
-## Components
-### ALB
-- Listener: HTTP 80
-- Target group: Instance targets on port 80
-- Health check:
-  - Path: `/health`
-  - Matcher: `200`
-  - Interval: 30s, timeout 5s
-  - Healthy threshold 2, unhealthy 2
+- Client traffic enters through ALB (`HTTP:80`)
+- ALB routes to EC2 instances managed by ASG
+- Frontend container (nginx) serves SPA and proxies `/api` to backend
+- Backend (FastAPI) talks to private RDS PostgreSQL
 
-### EC2 (t3.micro, Amazon Linux 2023)
-- Runs Docker Compose in production mode
-- Frontend container serves static React build + acts as reverse proxy:
-  - `/` -> React SPA
-  - `/api/*` -> FastAPI backend (internal service)
-- Backend is **not exposed publicly**; only reachable inside Docker network
+Flow:
 
-### RDS (PostgreSQL)
-- Private subnet only
-- SG allows inbound 5432 only from EC2 security group
+`Client -> ALB -> EC2 (frontend nginx) -> backend (FastAPI) -> RDS (private)`
 
-## Network Design
-### VPC
-CIDR: `10.0.0.0/16`
+## Network and Subnets
 
-### Subnets
-| Tier | Type | AZ | CIDR | Purpose |
-|------|------|----|------|---------|
-| Public | Public | ap-south-1a | 10.0.0.0/24 | ALB |
-| Public | Public | ap-south-1b | 10.0.1.0/24 | ALB |
+VPC CIDR: `10.0.0.0/16`
+
+| Tier | Subnet Type | AZ | CIDR | Purpose |
+|---|---|---|---|---|
+| Public | Public | ap-south-1a | 10.0.0.0/24 | ALB + EC2/ASG |
+| Public | Public | ap-south-1b | 10.0.1.0/24 | ALB + EC2/ASG |
 | Data | Private | ap-south-1a | 10.0.10.0/24 | RDS |
 | Data | Private | ap-south-1b | 10.0.11.0/24 | RDS |
 
-### Routing
-- Public route table: `0.0.0.0/0 -> Internet Gateway`
-- Private DB route table: **no default internet route**
-- NAT Gateway: **not used** (credit-safe)
+Routing notes:
+- Public route table uses Internet Gateway.
+- Private DB route table has no default internet route.
+- NAT Gateway is intentionally not used (cost control for free-tier credits).
 
-## Security Groups (Rules)
-### alb-sg
-Inbound:
-- TCP 80 from `0.0.0.0/0`
-Outbound:
-- All (default)
+## Security Groups
 
-### app-ec2-sg
-Inbound:
-- TCP 80 from `alb-sg`
-- TCP 22 from *my IP only* (temporary admin)
-Outbound:
-- All (default)
+| Security Group | Inbound | Outbound |
+|---|---|---|
+| `alb-sg` | TCP 80 from `0.0.0.0/0` | All |
+| `ec2-sg` | TCP 80 from `alb-sg` | All |
+| `rds-sg` | TCP 5432 from `ec2-sg` | All |
 
-### rds-sg
-Inbound:
-- TCP 5432 from `app-ec2-sg`
-Outbound:
-- Default
+## Compute and Runtime
 
-## Why these decisions
-- **ALB in front**: stable endpoint, health checks, isolates app server exposure
-- **Backend not publicly exposed**: API reachable only via nginx reverse proxy
-- **RDS private**: data tier not internet reachable
-- **No NAT Gateway**: avoids ongoing hourly charges while maintaining core best practices
+- Launch Template defines AMI, instance type, IAM profile, user data.
+- ASG keeps minimum desired capacity of 1 instance for self-healing.
+- Instances are tagged `Name=lexiconnect-dev-app` for SSM-based deployments.
+- Backend is internal-only (`expose 8000`), not host-published in production compose.
 
-## Evidence
-Screenshots:
-- [docs/screenshots/alb-targets-healthy.png](screenshots/alb-targets-healthy.png)
-- [docs/screenshots/alb-listener-80.png](screenshots/alb-listener-80.png)
-- [docs/screenshots/alb-dns.png](screenshots/alb-dns.png)
+## Deployment Topology
+
+- `deploy/docker-compose.prod.yml` runs frontend + backend.
+- Frontend nginx routes:
+  - `/` -> SPA
+  - `/api/` -> `backend:8000`
+  - `/health` -> static `200 ok` for ALB health check
+
+## Diagrams
+
+- Architecture diagram: `diagrams/architecture.png`
+- ERD: `diagrams/erd.png`
+
+## Related Docs
+
+- `INFRASTRUCTURE.md`
+- `SECURITY.md`
+- `RUNBOOK.md`
+- `INCIDENT_RCA_ALB_UNHEALTHY_TARGET.md`

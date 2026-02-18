@@ -1,43 +1,36 @@
-# Security Notes
+﻿# Security Notes
 
-## Network Controls
-- ALB is the only public entrypoint
-- EC2 inbound is restricted to ALB SG (80) + my IP (22 temporary)
-- RDS is private and only allows 5432 from EC2 SG
+## Runtime Exposure
 
-## Service Exposure
-- Backend container is internal only (no host port published)
-- Only port 80 is exposed on EC2 host
+- ALB is the public entrypoint.
+- EC2 app instances accept traffic from ALB on port 80.
+- Backend container is internal-only in production compose (no host port mapping).
+- RDS is in private subnets and restricted to app security group on `5432`.
 
-## SSH Hardening
-- PasswordAuthentication disabled
-- Root login disabled
-- SSH restricted to admin IP (temporary)
+## Access Controls
 
-## TLS / HTTPS
-Current demo uses HTTP because no custom domain is attached, therefore ACM cannot issue a browser-trusted certificate for the ALB DNS name.
-Production plan:
-- Buy domain
-- Validate in Route53 (or external DNS)
-- Attach ACM cert to ALB 443
-- Redirect 80 -> 443 and enable HSTS
+- EC2 administration is via AWS SSM Session Manager (no static host credentials required).
+- Instance role is scoped to required SSM parameter reads.
+- App authorization uses JWT + RBAC controls.
 
-## Evidence
-Paste these outputs:
+## Secrets Handling
 
-### docker ports
+- Runtime config/secrets are sourced from SSM Parameter Store (`/lexiconnect/dev/*`).
+- No production secrets are committed in repository files.
 
-```text
-[ec2-user@ip-10-0-0-158 ~]$ docker ps --format "table {{.Names}}\t{{.Ports}}"
-NAMES                    PORTS
-lexiconnect-frontend-1   0.0.0.0:80->80/tcp, :::80->80/tcp
-lexiconnect-backend-1    8000/tcp
-```
+## HTTP Demo Limitation
 
-### host listening ports
+Current demo uses HTTP for ALB endpoint because ACM cannot issue a browser-trusted certificate for raw ALB DNS names without a domain.
 
-```text
-[ec2-user@ip-10-0-0-158 ~]$ sudo ss -lntp | egrep ':80|:8000' || true
-LISTEN 0      4096         0.0.0.0:80         0.0.0.0:*    users:(("docker-proxy",pid=14818,fd=4))
-LISTEN 0      4096            [::]:80            [::]:*    users:(("docker-proxy",pid=14826,fd=4))
-```
+## Production TLS Plan
+
+- Use custom domain (Route53 or delegated DNS).
+- Request/validate ACM certificate.
+- Attach cert to ALB listener `:443`.
+- Redirect `:80 -> :443` and enable HSTS.
+
+## Monitoring and Response
+
+- CloudWatch alarm on ALB healthy targets.
+- SNS notification fanout for alerting.
+- RCA tracked in `INCIDENT_RCA_ALB_UNHEALTHY_TARGET.md`.
