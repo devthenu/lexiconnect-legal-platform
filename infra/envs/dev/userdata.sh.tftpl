@@ -52,9 +52,10 @@ chown -R ec2-user:ec2-user "$APP_DIR"
 
 echo "==> Fetch required SSM params"
 DATABASE_URL="$(aws ssm get-parameter --name "$PARAM_PREFIX/DATABASE_URL" --with-decryption --query Parameter.Value --output text --region "$REGION")"
-FRONTEND_URL="$(aws ssm get-parameter --name "$PARAM_PREFIX/FRONTEND_URL" --query Parameter.Value --output text --region "$REGION")"
-ENV_VAL="$(aws ssm get-parameter --name "$PARAM_PREFIX/ENV" --query Parameter.Value --output text --region "$REGION")"
-DEBUG_VAL="$(aws ssm get-parameter --name "$PARAM_PREFIX/DEBUG" --query Parameter.Value --output text --region "$REGION")"
+SECRET_KEY="$(aws ssm get-parameter --name "$PARAM_PREFIX/SECRET_KEY" --with-decryption --query Parameter.Value --output text --region "$REGION")"
+FRONTEND_URL="$(aws ssm get-parameter --name "$PARAM_PREFIX/FRONTEND_URL" --query Parameter.Value --output text --region "$REGION" 2>/dev/null || true)"
+ENV_VAL="$(aws ssm get-parameter --name "$PARAM_PREFIX/ENV" --query Parameter.Value --output text --region "$REGION" 2>/dev/null || true)"
+DEBUG_VAL="$(aws ssm get-parameter --name "$PARAM_PREFIX/DEBUG" --query Parameter.Value --output text --region "$REGION" 2>/dev/null || true)"
 
 SMTP_HOST="$(aws ssm get-parameter --name "$PARAM_PREFIX/SMTP_HOST" --query Parameter.Value --output text --region "$REGION" 2>/dev/null || true)"
 SMTP_PORT="$(aws ssm get-parameter --name "$PARAM_PREFIX/SMTP_PORT" --query Parameter.Value --output text --region "$REGION" 2>/dev/null || true)"
@@ -65,11 +66,12 @@ mkdir -p "$DEPLOY_DIR"
 
 cat > "$DEPLOY_DIR/.env.prod" <<EOF
 DATABASE_URL=$DATABASE_URL
-FRONTEND_URL=$FRONTEND_URL
-ENV=$ENV_VAL
-DEBUG=$DEBUG_VAL
+SECRET_KEY=$SECRET_KEY
 EOF
 
+if [ -n "$FRONTEND_URL" ]; then echo "FRONTEND_URL=$FRONTEND_URL" >> "$DEPLOY_DIR/.env.prod"; fi
+if [ -n "$ENV_VAL" ]; then echo "ENV=$ENV_VAL" >> "$DEPLOY_DIR/.env.prod"; fi
+if [ -n "$DEBUG_VAL" ]; then echo "DEBUG=$DEBUG_VAL" >> "$DEPLOY_DIR/.env.prod"; fi
 if [ -n "$SMTP_HOST" ]; then echo "SMTP_HOST=$SMTP_HOST" >> "$DEPLOY_DIR/.env.prod"; fi
 if [ -n "$SMTP_PORT" ]; then echo "SMTP_PORT=$SMTP_PORT" >> "$DEPLOY_DIR/.env.prod"; fi
 if [ -n "$EMAIL_FROM" ]; then echo "EMAIL_FROM=$EMAIL_FROM" >> "$DEPLOY_DIR/.env.prod"; fi
@@ -79,6 +81,12 @@ chmod 600 "$DEPLOY_DIR/.env.prod"
 
 echo "==> Boot app"
 sleep 5
-su - ec2-user -c "cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml up -d --build"
+su - ec2-user -c "cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml pull"
+su - ec2-user -c "cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml up -d"
 
 echo "==> Done"
+
+
+
+
+

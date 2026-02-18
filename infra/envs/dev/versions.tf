@@ -9,7 +9,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "lexiconnect-tfstate-devthenu-1771175639"
+    bucket         = "lexiconnect-tfstate-1771394861"
     key            = "lexiconnect/dev/terraform.tfstate"
     region         = "ap-south-1"
     dynamodb_table = "lexiconnect-tf-locks"
@@ -20,3 +20,4 @@ terraform {
 provider "aws" {
   region = "ap-south-1"
 }
+
