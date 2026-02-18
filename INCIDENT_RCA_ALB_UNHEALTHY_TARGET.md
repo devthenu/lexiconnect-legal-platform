@@ -8,7 +8,7 @@
 
 ## Summary
 
-The LexiConnect dev environment experienced downtime where the Application Load Balancer (ALB) reported the target as unhealthy and users received `502 Bad Gateway` errors. The issue was caused by the frontend container being stopped, resulting in failed responses from the instance behind the ALB health checks. CloudWatch alarm for `HealthyHostCount < 1` triggered and SNS notification was received.
+The LexiConnect dev environment experienced downtime where the Application Load Balancer (ALB) reported the target as unhealthy and users received `502 Bad Gateway` errors. The reverse proxy path returned `502` because the backend upstream became unavailable, resulting in failed ALB health checks. CloudWatch alarm for `HealthyHostCount < 1` triggered and SNS notification was received.
 
 ## Impact
 
@@ -30,21 +30,17 @@ The incident was detected through:
 ![CloudWatch Alarm In Alarm](docs/screenshots/cloudwatch_alarm_in_alarm.png)
 ![SNS Email Notification](docs/screenshots/sns_email_notification.png)
 
-**Evidence:**
-![CloudWatch Alarm In Alarm](docs/screenshots/cloudwatch_alarm_in_alarm.png)
-![SNS Email Notification](docs/screenshots/sns_email_notification.png)
-
 ## Timeline (UTC)
 
 | Time (UTC) | Event |
 |-----------|------|
-| 13:30 | Frontend container manually stopped using docker compose |
+| 13:30 | Backend container became unavailable (stopped/unreachable) |
 | 13:30 | `curl http://127.0.0.1/api/health` returned `502 Bad Gateway` |
 | 13:32 | ALB Target Group health check failed |
 | 13:33 | CloudWatch alarm moved to `INSUFFICIENT_DATA` |
 | 13:35 | Alarm moved to `ALARM` |
 | 13:36 | SNS email notification received |
-| 13:40 | Frontend restarted using docker compose |
+| 13:40 | Backend service recovered using docker compose |
 | 13:42 | ALB target became healthy |
 | 13:43 | Alarm returned to `OK` |
 
@@ -52,14 +48,9 @@ The incident was detected through:
 ![ALB Target Unhealthy](docs/screenshots/alb_target_unhealthy.png)
 ![CloudWatch Alarm History](docs/screenshots/cloudwatch_alarm_history.png)
 
-**Evidence:**
-![SSM Terminal 502](docs/screenshots/ssm_terminal_502.png)
-![ALB Target Unhealthy](docs/screenshots/alb_target_unhealthy.png)
-![CloudWatch Alarm History](docs/screenshots/cloudwatch_alarm_history.png)
-
 ## Root Cause
 
-The frontend service container (`lexiconnect-frontend-1`) was stopped, causing the EC2 target to return failed responses for health checks. This resulted in ALB health checks failing and ALB reporting 0 healthy targets.
+The reverse proxy (frontend nginx) returned `502` because the backend upstream was unavailable (backend container stopped/unreachable), causing ALB health checks to fail and targets to be marked unhealthy.
 
 ## Contributing Factors
 
@@ -70,10 +61,10 @@ The frontend service container (`lexiconnect-frontend-1`) was stopped, causing t
 
 ## Resolution
 
-The frontend container was restarted using:
+The backend container was restarted using:
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d frontend
+docker compose -f docker-compose.prod.yml up -d backend
 ```
 
 After restart, ALB health checks succeeded and the target group returned to healthy status. CloudWatch alarm transitioned back to OK.
@@ -87,7 +78,8 @@ After restart, ALB health checks succeeded and the target group returned to heal
 
 ## Preventative Improvements (Planned)
 
-- Add Auto Scaling Group (ASG) to replace failed EC2 automatically
+- Implemented: ASG migration for self-healing
+- Add proof screenshot: `docs/screenshots/asg_instance_inservice.png` (ASG instance state = InService)
 - Add docker restart policy (`restart: always`) for backend and frontend
 - Add CloudWatch log shipping for backend logs
 - Add ALB 5XX alarm to detect proxy failures early
