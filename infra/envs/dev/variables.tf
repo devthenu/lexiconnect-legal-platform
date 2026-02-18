@@ -28,11 +28,6 @@ variable "private_db_subnet_cidrs" {
   default = ["10.0.10.0/24", "10.0.11.0/24"]
 }
 
-variable "my_ip_cidr" {
-  description = "My public IP CIDR for SSH access"
-  type        = string
-}
-
 variable "key_name" {
   description = "Existing EC2 key pair name in ap-south-1"
   type        = string
