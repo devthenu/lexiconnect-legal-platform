@@ -33,6 +33,12 @@ variable "key_name" {
   type        = string
 }
 
+variable "instance_type" {
+  description = "EC2 instance type for app nodes"
+  type        = string
+  default     = "t3.micro"
+}
+
 variable "repo_url" {
   description = "Git repo URL (public). If private, we'll switch to deploy keys later."
   type        = string

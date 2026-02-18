@@ -281,26 +281,50 @@ data "aws_ami" "al2" {
   }
 }
 
-resource "aws_instance" "app" {
-  ami                         = data.aws_ami.al2.id
-  instance_type               = "t3.micro"
-  subnet_id                   = aws_subnet.public[0].id
-  vpc_security_group_ids      = [aws_security_group.ec2.id]
-  key_name                    = var.key_name
-  iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
-  associate_public_ip_address = true
+resource "aws_launch_template" "app" {
+  name_prefix   = "${local.name}-lt-"
+  image_id      = data.aws_ami.al2.id
+  instance_type = var.instance_type
+  key_name      = var.key_name
 
-  user_data = templatefile("${path.module}/userdata.sh.tftpl", {
+  iam_instance_profile {
+    name = aws_iam_instance_profile.ec2_profile.name
+  }
+
+  vpc_security_group_ids = [aws_security_group.ec2.id]
+
+  user_data = base64encode(templatefile("${path.module}/userdata.sh.tftpl", {
     repo_url = var.repo_url
     env      = var.env
-  })
+  }))
 
-  tags = merge(local.tags, { Name = "${local.name}-app" })
+  tag_specifications {
+    resource_type = "instance"
+    tags = merge(local.tags, {
+      Name = "${local.name}-app"
+    })
+  }
 }
 
-resource "aws_lb_target_group_attachment" "ec2" {
-  target_group_arn = aws_lb_target_group.app.arn
-  target_id        = aws_instance.app.id
-  port             = 80
+resource "aws_autoscaling_group" "app" {
+  name                      = "${local.name}-asg"
+  min_size                  = 1
+  max_size                  = 2
+  desired_capacity          = 1
+  vpc_zone_identifier       = aws_subnet.public[*].id
+  health_check_type         = "ELB"
+  health_check_grace_period = 180
+  target_group_arns         = [aws_lb_target_group.app.arn]
+
+  launch_template {
+    id      = aws_launch_template.app.id
+    version = "$Latest"
+  }
+
+  tag {
+    key                 = "Name"
+    value               = "${local.name}-app"
+    propagate_at_launch = true
+  }
 }
 
