@@ -79,7 +79,7 @@ After restart, ALB health checks succeeded and the target group returned to heal
 ## Preventative Improvements (Planned)
 
 - Implemented: ASG migration for self-healing
-- Add proof screenshot: `docs/screenshots/asg_instance_inservice.png` (ASG instance state = InService)
+- Added screenshot: `docs/screenshots/asg_instance_inservice.png` (ASG instance state = InService)
 - Add docker restart policy (`restart: always`) for backend and frontend
 - Add CloudWatch log shipping for backend logs
 - Add ALB 5XX alarm to detect proxy failures early
@@ -102,3 +102,4 @@ After restart, ALB health checks succeeded and the target group returned to heal
 | `alb_target_unhealthy.png` | Target group showing unhealthy |
 | `github_actions_deploy_success.png` | Deploy workflow run success |
 | `github_actions_build_sha.png` | Build workflow showing commit SHA |
+| `asg_instance_inservice.png` | ASG instances tab showing target instance in `InService` |
