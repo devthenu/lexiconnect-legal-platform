@@ -27,35 +27,35 @@ The incident was detected through:
 3. SNS email notification received
 4. Manual verification showed `502 Bad Gateway` on backend health endpoint
 
-![TODO: CloudWatch Alarm In Alarm](screenshots/cloudwatch_alarm_in_alarm.png)
-![TODO: SNS Email Notification](screenshots/sns_email_notification.png)
+![CloudWatch Alarm In Alarm](docs/screenshots/cloudwatch_alarm_in_alarm.png)
+![SNS Email Notification](docs/screenshots/sns_email_notification.png)
 
 **Evidence:**
-- Screenshot: `screenshots/cloudwatch_alarm_in_alarm.png`
-- Screenshot: `screenshots/sns_email_notification.png`
+![CloudWatch Alarm In Alarm](docs/screenshots/cloudwatch_alarm_in_alarm.png)
+![SNS Email Notification](docs/screenshots/sns_email_notification.png)
 
 ## Timeline (UTC)
 
 | Time (UTC) | Event |
 |-----------|------|
-| 12:05 | Backend container manually stopped using docker compose |
-| 12:05 | `curl http://127.0.0.1/api/health` returned `502 Bad Gateway` |
-| 12:07 | ALB Target Group health check failed |
-| 12:08 | CloudWatch alarm moved to `INSUFFICIENT_DATA` |
-| 12:10 | Alarm moved to `ALARM` |
-| 12:11 | SNS email notification received |
-| 12:15 | Backend restarted using docker compose |
-| 12:17 | ALB target became healthy |
-| 12:18 | Alarm returned to `OK` |
+| 13:30 | Backend container manually stopped using docker compose |
+| 13:30 | `curl http://127.0.0.1/api/health` returned `502 Bad Gateway` |
+| 13:32 | ALB Target Group health check failed |
+| 13:33 | CloudWatch alarm moved to `INSUFFICIENT_DATA` |
+| 13:35 | Alarm moved to `ALARM` |
+| 13:36 | SNS email notification received |
+| 13:40 | Backend restarted using docker compose |
+| 13:42 | ALB target became healthy |
+| 13:43 | Alarm returned to `OK` |
 
-![TODO: SSM Terminal 502](screenshots/ssm_terminal_502.png)
-![TODO: ALB Target Unhealthy](screenshots/alb_target_unhealthy.png)
-![TODO: CloudWatch Alarm History](screenshots/cloudwatch_alarm_history.png)
+![SSM Terminal 502](docs/screenshots/ssm_terminal_502.png)
+![ALB Target Unhealthy](docs/screenshots/alb_target_unhealthy.png)
+![CloudWatch Alarm History](docs/screenshots/cloudwatch_alarm_history.png)
 
 **Evidence:**
-- Screenshot: `screenshots/ssm_terminal_502.png`
-- Screenshot: `screenshots/alb_target_unhealthy.png`
-- Screenshot: `screenshots/cloudwatch_alarm_history.png`
+![SSM Terminal 502](docs/screenshots/ssm_terminal_502.png)
+![ALB Target Unhealthy](docs/screenshots/alb_target_unhealthy.png)
+![CloudWatch Alarm History](docs/screenshots/cloudwatch_alarm_history.png)
 
 ## Root Cause
 
