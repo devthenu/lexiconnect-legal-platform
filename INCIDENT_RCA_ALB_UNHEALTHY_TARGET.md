@@ -55,7 +55,7 @@ The reverse proxy (frontend nginx) returned `502` because the backend upstream w
 ## Contributing Factors
 
 - Backend container failure was not automatically recovered
-- Deployment system did not use Auto Scaling Group (single EC2 instance)
+- At incident time, deployment used a single EC2 instance without self-healing
 - No container restart policy was configured initially
 - CloudWatch alarm was configured with missing-data behavior that temporarily showed `INSUFFICIENT_DATA`
 
@@ -75,11 +75,12 @@ After restart, ALB health checks succeeded and the target group returned to heal
 - Connected SNS email notifications for alerts
 - Verified alarm transitions through simulated backend outage
 - Confirmed deterministic deployments using SHA pinned tags
+- Implemented Auto Scaling Group (ASG) migration for self-healing
+
+![ASG Instance InService](docs/screenshots/asg_instance_inservice.png)
 
 ## Preventative Improvements (Planned)
 
-- Implemented: ASG migration for self-healing
-- Added screenshot: `docs/screenshots/asg_instance_inservice.png` (ASG instance state = InService)
 - Add docker restart policy (`restart: always`) for backend and frontend
 - Add CloudWatch log shipping for backend logs
 - Add ALB 5XX alarm to detect proxy failures early
