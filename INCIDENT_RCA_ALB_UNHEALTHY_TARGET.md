@@ -8,7 +8,7 @@
 
 ## Summary
 
-The LexiConnect dev environment experienced downtime where the Application Load Balancer (ALB) reported the target as unhealthy and users received `502 Bad Gateway` errors. The issue was caused by the backend container being stopped, resulting in NGINX failing to proxy requests to the backend health endpoint. CloudWatch alarm for `HealthyHostCount < 1` triggered and SNS notification was received.
+The LexiConnect dev environment experienced downtime where the Application Load Balancer (ALB) reported the target as unhealthy and users received `502 Bad Gateway` errors. The issue was caused by the frontend container being stopped, resulting in failed responses from the instance behind the ALB health checks. CloudWatch alarm for `HealthyHostCount < 1` triggered and SNS notification was received.
 
 ## Impact
 
@@ -38,13 +38,13 @@ The incident was detected through:
 
 | Time (UTC) | Event |
 |-----------|------|
-| 13:30 | Backend container manually stopped using docker compose |
+| 13:30 | Frontend container manually stopped using docker compose |
 | 13:30 | `curl http://127.0.0.1/api/health` returned `502 Bad Gateway` |
 | 13:32 | ALB Target Group health check failed |
 | 13:33 | CloudWatch alarm moved to `INSUFFICIENT_DATA` |
 | 13:35 | Alarm moved to `ALARM` |
 | 13:36 | SNS email notification received |
-| 13:40 | Backend restarted using docker compose |
+| 13:40 | Frontend restarted using docker compose |
 | 13:42 | ALB target became healthy |
 | 13:43 | Alarm returned to `OK` |
 
@@ -59,7 +59,7 @@ The incident was detected through:
 
 ## Root Cause
 
-The backend service container (`lexiconnect-backend-1`) was stopped, causing NGINX reverse proxy to fail when forwarding requests to the backend. This resulted in ALB health checks failing and ALB reporting 0 healthy targets.
+The frontend service container (`lexiconnect-frontend-1`) was stopped, causing the EC2 target to return failed responses for health checks. This resulted in ALB health checks failing and ALB reporting 0 healthy targets.
 
 ## Contributing Factors
 
@@ -70,10 +70,10 @@ The backend service container (`lexiconnect-backend-1`) was stopped, causing NGI
 
 ## Resolution
 
-The backend container was restarted using:
+The frontend container was restarted using:
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d backend
+docker compose -f docker-compose.prod.yml up -d frontend
 ```
 
 After restart, ALB health checks succeeded and the target group returned to healthy status. CloudWatch alarm transitioned back to OK.
