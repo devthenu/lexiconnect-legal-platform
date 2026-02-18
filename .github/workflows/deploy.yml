@@ -29,7 +29,10 @@ jobs:
             --targets "Key=tag:Name,Values=lexiconnect-dev-app" \
             --parameters commands='[
               "set -euxo pipefail",
+              "DEPLOY_SHA=${{ github.event.workflow_run.head_sha }}",
               "cd /home/ec2-user/LexiConnect/deploy",
+              "sed -E -i '\''s#(ghcr.io/devthenu/lexiconnect-backend:).*#\1'\''\"$DEPLOY_SHA\"'\''#'\'' docker-compose.prod.yml",
+              "sed -E -i '\''s#(ghcr.io/devthenu/lexiconnect-frontend:).*#\1'\''\"$DEPLOY_SHA\"'\''#'\'' docker-compose.prod.yml",
               "docker compose -f docker-compose.prod.yml pull",
               "docker compose -f docker-compose.prod.yml up -d",
               "docker compose -f docker-compose.prod.yml ps"
